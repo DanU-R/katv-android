@@ -116,13 +116,28 @@ object ChannelRepository {
                     when {
                         t <= 0L -> ch.tagline.contains("LIVE 24/7", true)
                         ch.tagline.trim().startsWith("LIVE 24/7", true) -> true
-                        else -> t > nowSec - 2 * 86400
+                        else -> {
+                            val s = ch.sStamp.toLongOrNull() ?: 0L
+                            // Tampilkan event yang masih LIVE atau belum mulai, plus yang baru
+                            // selesai < 6 jam (biar hasil pertandingan masih bisa dilihat).
+                            s >= nowSec - 6 * 3600
+                        }
                     }
                 }
                 .distinctBy { it.id }
                 .sortedWith(compareBy<ChannelDto> { ch ->
                     val t = ch.tStamp.toLongOrNull() ?: 0L
-                    if (t <= 0L) Long.MAX_VALUE else t  // always_live (t=0) ke belakang
+                    val s = ch.sStamp.toLongOrNull() ?: 0L
+                    val always = t <= 0L || ch.tagline.trim().startsWith("LIVE 24/7", true)
+                    val live = !always && t > 0 && s > 0 && t <= nowSec && nowSec < s
+                    when {
+                        always -> 0L          // 24/7 paling stabil → depan
+                        live -> 1L            // event sedang LIVE
+                        else -> 2L            // UPCOMING / baru selesai
+                    }
+                }.thenBy { ch ->
+                    val t = ch.tStamp.toLongOrNull() ?: 0L
+                    if (t <= 0L) 0L else t   // dalam grup, urut berdasarkan waktu
                 }.thenBy { it.name })
             return events.mapIndexed { index, ch ->
                 val (teams, whenWib, status) = parseEventTagline(ch.tagline, ch.tStamp, ch.sStamp)

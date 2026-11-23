@@ -96,9 +96,13 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
             if (n > 0) {
                 // Sync selesai → paksa rebuild dari channels.json yang baru (bukan asset lama).
                 // Tanpa ini, allCache sudah terisi dari asset sebelum sync selesai → event baru tak muncul.
+                val prevUrl = playerVm.playingUrl
                 ChannelRepository.clearCache()
-                feedVersion++
-                android.util.Log.d("KaTvFeed", "feedVersion -> $feedVersion, cache cleared")
+                val refreshed = ChannelRepository.loadAll(context)
+                if (prevUrl.isBlank() || refreshed.any { it.hls == prevUrl }) {
+                    feedVersion++
+                    android.util.Log.d("KaTvFeed", "feedVersion -> $feedVersion, cache cleared")
+                }
             }
         } catch (e: Exception) {
             // feed gagal -> cache/asset lama tetap dipakai, tanpa error UI
@@ -112,8 +116,16 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
                 FeedRepository.resetSync()
                 val n = FeedRepository.syncFeed(context)
                 if (n > 0) {
+                    val prevUrl = playerVm.playingUrl
                     ChannelRepository.clearCache()
-                    feedVersion++     // rebuild tab & grid dari data segar
+                    val refreshed = ChannelRepository.loadAll(context)
+                    // Jangan rebuild grid kalau channel yang sedang diputar masih ada —
+                    // ini yang bikin pindah channel sendiri tiap 5 menit pas feed refresh.
+                    if (prevUrl.isBlank() || refreshed.any { it.hls == prevUrl }) {
+                        feedVersion++
+                    } else {
+                        android.util.Log.d("KaTvFeed", "skip rebuild: current channel no longer in feed")
+                    }
                 }
             } catch (e: Exception) { /* jaga feed lama tetap tampil */ }
         }
@@ -135,9 +147,16 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
     var selected by remember(tabCode, cards) {
         mutableIntStateOf(
             if (tabCode.equals("EV", true)) {
-                // Event: SELALU prioritaskan yang LIVE/UPCOMING, abaikan playerVm index
-                // (index lama bisa nunjuk event Januari yang sudah lewat).
-                val active = cards.indexOfFirst { it.eventStatus == "LIVE" || it.eventStatus == "UPCOMING" }
+                // Prioritas: LIVE dulu, lalu 24/7 (paling stabil), baru UPCOMING.
+                // Jangan pilih UPCOMING/ENDED di depan — itu yang bikin loncat-loncat
+                // ke event yang belum mulai / sudah selesai saat feed refresh.
+                val live = cards.indexOfFirst { it.eventStatus == "LIVE" }
+                val always = cards.indexOfFirst { it.channel.tagline.contains("LIVE 24/7", true) }
+                val active = when {
+                    live >= 0 -> live
+                    always >= 0 -> always
+                    else -> cards.indexOfFirst { it.eventStatus == "UPCOMING" }
+                }
                 if (active >= 0) active else 0
             } else if (tabCode == playerVm.tabCode && cards.isNotEmpty())
                 playerVm.selectedIndex.coerceIn(cards.indices)
