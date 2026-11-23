@@ -1,0 +1,289 @@
+[
+  {
+    "code": "AR",
+    "country_name": "Argentina",
+    "country": "AR",
+    "channels": 11,
+    "token": 1794958620
+  },
+  {
+    "code": "AU",
+    "country_name": "Australia",
+    "country": "AU",
+    "channels": 22,
+    "token": 1794958620
+  },
+  {
+    "code": "BE",
+    "country_name": "Belgium",
+    "country": "BE",
+    "channels": 8,
+    "token": 1794958620
+  },
+  {
+    "code": "BR",
+    "country_name": "Brazil",
+    "country": "BR",
+    "channels": 84,
+    "token": 1794958620
+  },
+  {
+    "code": "C0",
+    "country_name": "Uncategorized",
+    "country": "C0",
+    "channels": 194,
+    "token": 1794958620
+  },
+  {
+    "code": "C1",
+    "country_name": "News/Berita",
+    "country": "C1",
+    "channels": 26,
+    "token": 1794958620
+  },
+  {
+    "code": "C2",
+    "country_name": "Music",
+    "country": "C2",
+    "channels": 12,
+    "token": 1794958620
+  },
+  {
+    "code": "C3",
+    "country_name": "Movie",
+    "country": "C3",
+    "channels": 34,
+    "token": 1794958620
+  },
+  {
+    "code": "C4",
+    "country_name": "Entertainment",
+    "country": "C4",
+    "channels": 29,
+    "token": 1794958620
+  },
+  {
+    "code": "C5",
+    "country_name": "Sports",
+    "country": "C5",
+    "channels": 155,
+    "token": 1794958620
+  },
+  {
+    "code": "C6",
+    "country_name": "Kids",
+    "country": "C6",
+    "channels": 22,
+    "token": 1794958620
+  },
+  {
+    "code": "C7",
+    "country_name": "TV Nusantara",
+    "country": "C7",
+    "channels": 22,
+    "token": 1794958620
+  },
+  {
+    "code": "C8",
+    "country_name": "Moslem",
+    "country": "C8",
+    "channels": 16,
+    "token": 1794958620
+  },
+  {
+    "code": "C9",
+    "country_name": "Knowledge",
+    "country": "C9",
+    "channels": 16,
+    "token": 1794958620
+  },
+  {
+    "code": "CA",
+    "country_name": "Canada",
+    "country": "CA",
+    "channels": 13,
+    "token": 1794958620
+  },
+  {
+    "code": "CN",
+    "country_name": "China",
+    "country": "CN",
+    "channels": 9,
+    "token": 1794958620
+  },
+  {
+    "code": "EV",
+    "country_name": "Events",
+    "country": "EV",
+    "channels": 14,
+    "token": 1794958620
+  },
+  {
+    "code": "FR",
+    "country_name": "France",
+    "country": "FR",
+    "channels": 8,
+    "token": 1794958620
+  },
+  {
+    "code": "GB",
+    "country_name": "United Kingdom",
+    "country": "GB",
+    "channels": 22,
+    "token": 1794958620
+  },
+  {
+    "code": "ID",
+    "country_name": "Indonesia",
+    "country": "ID",
+    "channels": 66,
+    "token": 1794958620
+  },
+  {
+    "code": "IN",
+    "country_name": "India",
+    "country": "IN",
+    "channels": 10,
+    "token": 1794958620
+  },
+  {
+    "code": "IT",
+    "country_name": "Italy",
+    "country": "IT",
+    "channels": 8,
+    "token": 1794958620
+  },
+  {
+    "code": "JP",
+    "country_name": "Japan",
+    "country": "JP",
+    "channels": 22,
+    "token": 1794958620
+  },
+  {
+    "code": "KD",
+    "country_name": "Kids",
+    "country": "KD",
+    "channels": 18,
+    "token": 1794958620
+  },
+  {
+    "code": "KR",
+    "country_name": "South Korea",
+    "country": "KR",
+    "channels": 17,
+    "token": 1794958620
+  },
+  {
+    "code": "KW",
+    "country_name": "Kuwait",
+    "country": "KW",
+    "channels": 8,
+    "token": 1794958620
+  },
+  {
+    "code": "LO",
+    "country_name": "TV Lokal",
+    "country": "LO",
+    "channels": 18,
+    "token": 1794958620
+  },
+  {
+    "code": "MX",
+    "country_name": "Mexico",
+    "country": "MX",
+    "channels": 13,
+    "token": 1794958620
+  },
+  {
+    "code": "MY",
+    "country_name": "Malaysia",
+    "country": "MY",
+    "channels": 24,
+    "token": 1794958620
+  },
+  {
+    "code": "PH",
+    "country_name": "Philippines (the)",
+    "country": "PH",
+    "channels": 10,
+    "token": 1794958620
+  },
+  {
+    "code": "PT",
+    "country_name": "Portugal",
+    "country": "PT",
+    "channels": 8,
+    "token": 1794958620
+  },
+  {
+    "code": "RI",
+    "country_name": "TVRI",
+    "country": "RI",
+    "channels": 38,
+    "token": 1794958620
+  },
+  {
+    "code": "RU",
+    "country_name": "Russian Federation (the)",
+    "country": "RU",
+    "channels": 17,
+    "token": 1794958620
+  },
+  {
+    "code": "SA",
+    "country_name": "Saudi Arabia",
+    "country": "SA",
+    "channels": 26,
+    "token": 1794958620
+  },
+  {
+    "code": "SG",
+    "country_name": "Singapore",
+    "country": "SG",
+    "channels": 17,
+    "token": 1794958620
+  },
+  {
+    "code": "SK",
+    "country_name": "Slovakia",
+    "country": "SK",
+    "channels": 10,
+    "token": 1794958620
+  },
+  {
+    "code": "SP",
+    "country_name": "Sports TV",
+    "country": "SP",
+    "channels": 89,
+    "token": 1794958620
+  },
+  {
+    "code": "TH",
+    "country_name": "Thailand",
+    "country": "TH",
+    "channels": 14,
+    "token": 1794958620
+  },
+  {
+    "code": "US",
+    "country_name": "United States of America (the)",
+    "country": "US",
+    "channels": 10,
+    "token": 1794958620
+  },
+  {
+    "code": "UY",
+    "country_name": "Uruguay",
+    "country": "UY",
+    "channels": 9,
+    "token": 1794958620
+  },
+  {
+    "code": "VN",
+    "country_name": "Viet Nam",
+    "country": "VN",
+    "channels": 8,
+    "token": 1794958620
+  }
+]

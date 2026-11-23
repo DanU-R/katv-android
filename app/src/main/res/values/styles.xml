@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Layout XML lama dipakai AAPT untuk windowBackground API<=30. -->
+    <style name="SplashThemeBase" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorBackground">@color/katv_obsidian</item>
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:textColorPrimary">#F4F2ED</item>
+        <item name="android:textColorSecondary">#94928B</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+    </style>
+
+    <!-- Base AppTheme (tanpa atribut splash API31) untuk API<=30. -->
+    <style name="AppTheme" parent="@style/SplashThemeBase" />
+</resources>

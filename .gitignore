@@ -1,0 +1,12 @@
+.gradle/
+**/build/
+local.properties
+.env
+*.env
+*.jks
+*.keystore
+*.apk
+*.aab
+output/**/*.png
+output/**/*.jpg
+output/**/*.json

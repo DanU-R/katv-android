@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ system splash: background gelap + ikon HI-RES (512px, tajam).
+         IconBackgroundColor TRANSPAREN supaya lingkaran Vermilion ikon tidak tertutup. -->
+    <style name="AppTheme" parent="@style/SplashThemeBase">
+        <item name="android:windowSplashScreenBackground">@color/katv_obsidian</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_hires</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+    </style>
+</resources>

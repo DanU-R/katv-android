@@ -1,0 +1,33 @@
+NFL Network|5.812812
+NFL RedZone|5.789196
+New York Jets at Los Angeles Chargers|5.894081
+Las Vegas Raiders at Denver Broncos|5.860475
+Jacksonville Jaguars at New York Giants|5.961611
+Minnesota Vikings at San Francisco 49ers|5.908519
+Fox Footy|4.90121
+Orlando Magic vs. Washington Wizards|3.948173
+Denver Nuggets vs. Chicago Bulls|6.80754
+Dallas Mavericks vs. Utah Jazz|6.241862
+Indiana Pacers vs. New York Knicks|5.946693
+Boston Celtics vs. Golden State Warriors|3.92473
+Willow|6.029621
+Fox Cricket|6.99304
+Guadalajara vs. Cruz Azul|5.841803
+Querétaro vs. Necaxa|5.519511
+Sky Sports Golf|5.263898
+NHL Network|6.716445
+Edmonton Oilers vs. St. Louis Blues|5.273544
+Pittsburgh Penguins vs. Dallas Stars|5.999543
+Chicago Blackhawks vs. Vancouver Canucks|5.31045
+Fox League|5.476966
+Tennis Channel|5.636526
+Sky Sports Tennis|4.654488
+24/7 South Park|4.566726
+24/7 COWS|5.625993
+24/7 Family Guy|4.74074
+24/7 The Simpsons|5.41245
+24/7 SpongeBob Squarepants|5.473283
+Rally TV|146.120377
+Sky Sports Racing|3.79341
+CNN|5.586725
+Fox News|4.891357

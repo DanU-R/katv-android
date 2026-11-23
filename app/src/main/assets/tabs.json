@@ -1,0 +1,207 @@
+[
+  {
+    "code": "EV",
+    "name": "Events",
+    "kind": "event"
+  },
+  {
+    "code": "C0",
+    "name": "Uncategorized",
+    "kind": "category"
+  },
+  {
+    "code": "C5",
+    "name": "Sports",
+    "kind": "category"
+  },
+  {
+    "code": "C3",
+    "name": "Movie",
+    "kind": "category"
+  },
+  {
+    "code": "C4",
+    "name": "Entertainment",
+    "kind": "category"
+  },
+  {
+    "code": "C2",
+    "name": "Music",
+    "kind": "category"
+  },
+  {
+    "code": "C1",
+    "name": "News/Berita",
+    "kind": "category"
+  },
+  {
+    "code": "C6",
+    "name": "Kids",
+    "kind": "category"
+  },
+  {
+    "code": "C7",
+    "name": "TV Nusantara",
+    "kind": "category"
+  },
+  {
+    "code": "C8",
+    "name": "Moslem",
+    "kind": "category"
+  },
+  {
+    "code": "C9",
+    "name": "Knowledge",
+    "kind": "category"
+  },
+  {
+    "code": "ID",
+    "name": "Indonesia",
+    "kind": "country"
+  },
+  {
+    "code": "SP",
+    "name": "Sports TV",
+    "kind": "country"
+  },
+  {
+    "code": "AR",
+    "name": "Argentina",
+    "kind": "country"
+  },
+  {
+    "code": "AU",
+    "name": "Australia",
+    "kind": "country"
+  },
+  {
+    "code": "BE",
+    "name": "Belgium",
+    "kind": "country"
+  },
+  {
+    "code": "BR",
+    "name": "Brazil",
+    "kind": "country"
+  },
+  {
+    "code": "CA",
+    "name": "Canada",
+    "kind": "country"
+  },
+  {
+    "code": "CN",
+    "name": "China",
+    "kind": "country"
+  },
+  {
+    "code": "KD",
+    "name": "Kids",
+    "kind": "country"
+  },
+  {
+    "code": "FR",
+    "name": "France",
+    "kind": "country"
+  },
+  {
+    "code": "IN",
+    "name": "India",
+    "kind": "country"
+  },
+  {
+    "code": "IT",
+    "name": "Italy",
+    "kind": "country"
+  },
+  {
+    "code": "JP",
+    "name": "Japan",
+    "kind": "country"
+  },
+  {
+    "code": "KR",
+    "name": "South Korea",
+    "kind": "country"
+  },
+  {
+    "code": "KW",
+    "name": "Kuwait",
+    "kind": "country"
+  },
+  {
+    "code": "MY",
+    "name": "Malaysia",
+    "kind": "country"
+  },
+  {
+    "code": "MX",
+    "name": "Mexico",
+    "kind": "country"
+  },
+  {
+    "code": "PH",
+    "name": "Philippines (the)",
+    "kind": "country"
+  },
+  {
+    "code": "PT",
+    "name": "Portugal",
+    "kind": "country"
+  },
+  {
+    "code": "RU",
+    "name": "Russian Federation (the)",
+    "kind": "country"
+  },
+  {
+    "code": "SA",
+    "name": "Saudi Arabia",
+    "kind": "country"
+  },
+  {
+    "code": "SG",
+    "name": "Singapore",
+    "kind": "country"
+  },
+  {
+    "code": "SK",
+    "name": "Slovakia",
+    "kind": "country"
+  },
+  {
+    "code": "VN",
+    "name": "Viet Nam",
+    "kind": "country"
+  },
+  {
+    "code": "TH",
+    "name": "Thailand",
+    "kind": "country"
+  },
+  {
+    "code": "GB",
+    "name": "United Kingdom",
+    "kind": "country"
+  },
+  {
+    "code": "US",
+    "name": "United States of America (the)",
+    "kind": "country"
+  },
+  {
+    "code": "UY",
+    "name": "Uruguay",
+    "kind": "country"
+  },
+  {
+    "code": "RI",
+    "name": "TVRI",
+    "kind": "country"
+  },
+  {
+    "code": "LO",
+    "name": "TV Lokal",
+    "kind": "country"
+  }
+]
