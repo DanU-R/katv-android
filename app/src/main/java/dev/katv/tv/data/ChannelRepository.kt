@@ -108,7 +108,25 @@ object ChannelRepository {
         // beda dengan channel biasa yang memang harus playable.
         if (tabCode.equals("EV", true)) {
             val nowSec = System.currentTimeMillis() / 1000
+            // Event tab = OLAHRAGA saja. Buang 24/7 non-sport (kartun, COWS, dll).
+            // Caranya: 24/7 dipertahankan HANYA kalau namanya sport; event "A vs B"
+            // atau bertema pertandingan dianggap sport (judul tidak selalu memuat kata olahraga).
+            val sportWords = listOf(
+                "nfl","nba","nhl","mlb","soccer","football","basketball","tennis","golf",
+                "rugby","cricket","motogp","formula","ufc","boxing","sports","league",
+                "liga","premier","serie a","laliga","bundesliga","champions","cup",
+                "fc ","cf ","if ","ifk ","bk ","sports racing","fox footy","rally"
+            )
+            fun isSport(ch: ChannelDto): Boolean {
+                val n = ch.name.lowercase()
+                val tag = ch.tagline.lowercase()
+                if (sportWords.any { n.contains(it) || tag.contains(it) }) return true
+                // format pertandingan "X vs Y" / "X at Y" → olahraga
+                if (n.contains(" vs ") || n.contains(" vs. ") || n.contains(" at ")) return true
+                return false
+            }
             val events = all.filter { it.region.equals("EV", true) }
+                .filter { isSport(it) }
                 .filter { ch ->
                     val t = ch.tStamp.toLongOrNull() ?: 0L
                     // Buang event tanpa jadwal (t=0) kecuali benar-benar always_live
@@ -138,6 +156,18 @@ object ChannelRepository {
                 }.thenBy { ch ->
                     val t = ch.tStamp.toLongOrNull() ?: 0L
                     if (t <= 0L) 0L else t   // dalam grup, urut berdasarkan waktu
+                }.thenBy { ch ->
+                    // Prioritas 24/7: NFL Network dulu (paling stabil & populer), baru sisanya.
+                    val n = ch.name.lowercase()
+                    when {
+                        n.contains("nfl network") -> 0
+                        n.contains("basketball") || n.contains("nba") -> 1
+                        n.contains("footy") || n.contains("football") -> 2
+                        n.contains("cricket") -> 3
+                        n.contains("golf") -> 4
+                        n.contains("tennis") -> 5
+                        else -> 6
+                    }
                 }.thenBy { it.name })
             return events.mapIndexed { index, ch ->
                 val (teams, whenWib, status) = parseEventTagline(ch.tagline, ch.tStamp, ch.sStamp)
