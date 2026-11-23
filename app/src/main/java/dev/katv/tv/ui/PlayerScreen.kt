@@ -103,8 +103,9 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     }
     var currentIdx by remember {
         mutableIntStateOf(
-            (if (playerVm.index in cards.indices) playerVm.index else channelIndex)
-                .coerceIn(cards.indices).let { if (cards.isEmpty()) 0 else it }
+            if (cards.isEmpty()) 0
+            else (if (playerVm.index in cards.indices) playerVm.index else channelIndex)
+                .coerceIn(cards.indices)
         )
     }
     var error by remember { mutableStateOf<String?>(null) }
