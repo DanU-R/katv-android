@@ -246,12 +246,20 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
     // Ganti URL hanya kalau channel benar-benar berubah. Setelah balik dari fullscreen,
     // current di-resolve dari tab+selected yang di-restore, jadi URL-nya sama dengan
     // yang sedang diputar → playerVm.play() jadi no-op (tanpa re-fetch / lompat ke CH01).
-    LaunchedEffect(current.channel.hls) {
+    // Embed (PPW/EsportEx) harus pakai WebView, BUKAN ExoPlayer — kalau dipaksa
+    // ExoPlayer, URL HTML-nya error → onError → advanceFrom → loncat channel sendiri.
+    val heroIsEmbed = remember(current.channel.hls) {
+        val u = current.channel.hls
+        !u.contains(".m3u8", true) && !u.contains(".mp4", true) &&
+            u.startsWith("http") && (u.contains("embed") || u.contains("player") ||
+            u.contains("/#") || u.contains("iframe"))
+    }
+    LaunchedEffect(current.channel.hls, heroIsEmbed) {
         playerVm.tab = tab
         playerVm.tabCode = tabCode
         playerVm.index = vmIndex
         playerVm.selectedIndex = vmIndex
-        playerVm.play(context, current)
+        if (!heroIsEmbed) playerVm.play(context, current)
     }
 
     val heroViewRef = remember { mutableStateOf<PlayerView?>(null) }
@@ -269,6 +277,9 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
                 .aspectRatio(16f / 9f)
                 .background(Color(0xFF272724))
         ) {
+            if (heroIsEmbed) {
+                WebViewPlayer(url = current.channel.hls, modifier = Modifier.fillMaxSize())
+            } else {
             AndroidView(
                 factory = { ctx ->
                     val instance = playerVm.ensurePlayer(ctx)
@@ -285,6 +296,7 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
                 },
                 modifier = Modifier.fillMaxSize()
             )
+            }
             // gradient overlay (visual tidak diubah)
             Box(
                 Modifier.fillMaxSize().background(
