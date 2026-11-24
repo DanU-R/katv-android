@@ -4,7 +4,7 @@
          IconBackgroundColor TRANSPAREN supaya lingkaran Vermilion ikon tidak tertutup. -->
     <style name="AppTheme" parent="@style/SplashThemeBase">
         <item name="android:windowSplashScreenBackground">@color/katv_obsidian</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_hires</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon_clean</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
     </style>
 </resources>
