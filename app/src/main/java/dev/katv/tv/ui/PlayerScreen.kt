@@ -179,11 +179,18 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
         }
     }
 
-    // Hapus overlay "Memuat" begitu frame pertama mulai diputar.
-    LaunchedEffect(loading) {
+    // Hapus overlay "Memuat" begitu frame pertama mulai diputar — ATAU setelah timeout.
+    // Dua jalan keluar ini mencegah teks "Memuat channel…" nempel selamanya saat
+    // isPlaying sempat fluktuasi (surface swap / HLS rebuffer) padahal video sudah tampil.
+    LaunchedEffect(loading, retryKey) {
+        var waited = 0L
         while (loading) {
-            kotlinx.coroutines.delay(200)
-            if (playerVm.player?.isPlaying == true) { loading = false; break }
+            kotlinx.coroutines.delay(150)
+            waited += 150
+            val p = playerVm.player
+            val live = p?.isPlaying == true ||
+                (p?.playWhenReady == true && p?.playbackState == Player.STATE_READY)
+            if (live || waited >= 2500L) { loading = false; break }
         }
     }
 

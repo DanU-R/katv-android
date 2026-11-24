@@ -163,12 +163,20 @@ class PlayerVm : ViewModel() {
         }
         instance.volume = if (muted) 0f else 1f
         applyQuality(instance)
-        if (!force && playingUrl == url) {
+        // SAMA persis & masih siap: jangan stop/prepare ulang (itu yang bikin kedip
+        // + "Memuat channel…" tiap buka fullscreen / retry). Cukup lanjutkan.
+        if (!force && playingUrl == url &&
+            (instance.playbackState == Player.STATE_READY ||
+             instance.playbackState == Player.STATE_BUFFERING)
+        ) {
             instance.playWhenReady = true
+            if (!instance.isPlaying) instance.play()
+            activityRef?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             return
         }
         playingUrl = url
-        instance.stop()
+        // setMediaItem sudah otomatis stop+prepare di ExoPlayer — panggil stop() manual
+        // di sini bikin transisi ke likedediam sesaat (double stop). Hapus.
         instance.setMediaItem(mediaItem(card))
         instance.prepare()
         instance.playWhenReady = true
