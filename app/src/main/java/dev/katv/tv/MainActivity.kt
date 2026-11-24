@@ -13,6 +13,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.katv.tv.ui.HomeScreen
+import dev.katv.tv.ui.SplashScreen
 import dev.katv.tv.ui.PlayerScreen
 import dev.katv.tv.ui.WebViewPlayer
 import dev.katv.tv.ui.theme.KaTvTypography
@@ -55,7 +56,7 @@ class MainActivity : ComponentActivity() {
                         val startRoute = when {
                             !startEmbed.isNullOrBlank() -> "player/url/${Uri.encode(startEmbed)}"
                             !startMedia.isNullOrBlank() -> "player/0"
-                            else -> "home"
+                            else -> "splash"
                         }
                         // Deep-link media_url: cari channel di feed (semua region) lalu play.
                         if (!startMedia.isNullOrBlank()) {
@@ -94,6 +95,15 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         NavHost(navController = navController, startDestination = startRoute) {
+                            composable("splash") {
+                                SplashScreen(
+                                    onFinished = {
+                                        navController.navigate("home") {
+                                            popUpTo("splash") { inclusive = true }
+                                        }
+                                    }
+                                )
+                            }
                             composable("home") {
                                 HomeScreen(
                                     playerVm = playerVm,
