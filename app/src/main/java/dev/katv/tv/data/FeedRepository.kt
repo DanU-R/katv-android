@@ -113,7 +113,60 @@ object FeedRepository {
     }
 
     /**
-     * Bangun array JSON event dari 2 API jadwal dinamis (PPW + EsportEx).
+     * Tambahkan server alternatif SamuraiTV ke event SEGAR (PPW/EsportEx).
+     * Cocokkan liga dari nama event; fallback = server beIN global (masih live).
+     * Event Samurai-nya sendiri BASI dan sengaja tidak dipakai sebagai feed.
+     */
+    private var samuraiCache: Map<String, List<String>>? = null
+    private fun samuraiServers(context: Context): Map<String, List<String>> {
+        samuraiCache?.let { return it }
+        val map = mutableMapOf<String, List<String>>()
+        try {
+            val raw = org.json.JSONObject(
+                context.assets.open("samurai_servers.json").bufferedReader().use { it.readText() }
+            )
+            val byLeague = raw.optJSONObject("by_league")
+            if (byLeague != null) {
+                val keys = byLeague.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val arr = byLeague.optJSONArray(k) ?: continue
+                    val urls = (0 until arr.length()).map { arr.getString(it) }
+                    if (urls.isNotEmpty()) map[k.lowercase()] = urls
+                }
+            }
+        } catch (e: Exception) { /* asset gagal -> kosong */ }
+        samuraiCache = map
+        return map
+    }
+
+    /** Gabungkan server Samurai (match liga) ke array servers event yang sudah ada. */
+    private fun augmentServers(context: Context, row: org.json.JSONObject, eventName: String) {
+        try {
+            val cur = org.json.JSONArray(row.optString("servers", "[]"))
+            val have = HashSet<String>()
+            for (i in 0 until cur.length()) have.add(cur.getJSONObject(i).optString("url", ""))
+            val pool = samuraiServers(context)
+            var added = 0
+            for ((league, urls) in pool) {
+                if (league.isBlank()) continue
+                if (!eventName.lowercase().contains(league) && !league.contains(eventName.lowercase())) continue
+                for (u in urls) {
+                    if (u in have || u.isBlank()) continue
+                    val o = org.json.JSONObject()
+                    o.put("name", "Samurai")
+                    o.put("url", u)
+                    cur.put(o); have.add(u); added++
+                    if (added >= 4) break
+                }
+                if (added >= 4) break
+            }
+            row.put("servers", cur.toString())
+        } catch (e: Exception) { /* jangan gagalkan event */ }
+    }
+
+    /**
+     * Bangun array JSON event dari API jadwal dinamis (PPW + EsportEx).
      * Dedup by nama+jam biar event yang sama gak dobel. Return null kalau dua-duanya gagal.
      */
     private fun buildEventsJson(context: Context): String? {
@@ -133,16 +186,12 @@ object FeedRepository {
             out.put(row)
         }
 
-        // --- 3. SamuraiTV (livesmrtv.blogspot.com): 69 event + multi-server dari
-        //     scrape halaman player live.samuraitv.biz.id. Asset statis, dynamic status
-        //     tetap dihitung dari clock (t_stamp/s_stamp). Di-load duluan supaya event
-        //     unik (F1/MotoGP/UFC/dll) gak kalah dedup dari PPW/EsportEx. ---
-        try {
-            val raw = context.assets.open("samurai_events.json").bufferedReader().use { it.readText() }
-            val arr = org.json.JSONArray(raw)
-            for (i in 0 until arr.length()) add(arr.getJSONObject(i))
-        } catch (e: Exception) { /* asset gagal -> lewati */ }
-
+        // --- 3. SamuraiTV: JANGAN dijadikan event feed. Situsnya statis & basi
+        //     (HTML tidak berubah berhari-hari), jadi 69 event-nya hampir semua
+        //     SELESAI — bakal memenuhi tab EV dengan kartu mati. Yang dipakai
+        //     hanyalah SERVER-nya sebagai failover (lihat samurai_servers.json →
+        //     PlayerVm.advanceServer lewat field "servers" pada event PPW/EsportEx).
+        //     Contoh: beIN via cp11.adabmedia.com/hls2/bein1.m3u8 masih live. ---
         // --- 1. PPW (api.ppv.st): streams[].streams[] dengan starts_at/ends_at epoch ---
         try {
             val ppw = org.json.JSONObject(fetchUrl(PPW_API))
@@ -201,6 +250,7 @@ object FeedRepository {
                     row.put("subtitle", srcTag)
                     row.put("t_stamp", tStr)
                     row.put("s_stamp", sStr)
+                    augmentServers(context, row, name + " " + tag + " " + catName)
                     add(row)
                 }
             }
@@ -242,6 +292,7 @@ object FeedRepository {
                     row.put("namespace", e.optString("league", cat))
                     row.put("t_stamp", kickoffToEpoch(kickoff))
                     row.put("s_stamp", kickoffToEpoch(e.optString("endTime", "")))
+                    augmentServers(context, row, tag + " " + e.optString("league", "") + " " + cat)
                     add(row)
                 }
             }
