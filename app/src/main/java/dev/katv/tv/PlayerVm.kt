@@ -62,6 +62,8 @@ class PlayerVm : ViewModel() {
 
     private val headersRef = AtomicReference<Map<String, String>>(emptyMap())
     private val uaRef = AtomicReference(DEFAULT_UA)
+    /** JSON lisensi ClearKey untuk item saat ini (null = pakai DRM default/network). */
+    private val clearkeyRef = AtomicReference<String?>(null)
     private var dataSourceFactory: OkHttpDataSource.Factory? = null
 
     val qualityLabels = listOf("AUTO", "1080p", "720p", "480p")
@@ -79,9 +81,29 @@ class PlayerVm : ViewModel() {
             .build()
         val factory = OkHttpDataSource.Factory(client).setUserAgent(uaRef.get())
         dataSourceFactory = factory
+        val drmProvider = androidx.media3.exoplayer.drm.DrmSessionManagerProvider { mediaItem ->
+            val ck = clearkeyRef.get()
+            if (ck != null) {
+                androidx.media3.exoplayer.drm.DefaultDrmSessionManager.Builder()
+                    .setUuidAndExoMediaDrmProvider(
+                        C.CLEARKEY_UUID,
+                        androidx.media3.exoplayer.drm.FrameworkMediaDrm.DEFAULT_PROVIDER
+                    )
+                    .setPlayClearSamplesWithoutKeys(true)
+                    .build(
+                        androidx.media3.exoplayer.drm.LocalMediaDrmCallback(
+                            ck.toByteArray(Charsets.UTF_8)
+                        )
+                    )
+            } else {
+                androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider().get(mediaItem)
+            }
+        }
         val instance = ExoPlayer.Builder(app)
             .setMediaSourceFactory(
-                DefaultMediaSourceFactory(app).setDataSourceFactory(factory)
+                DefaultMediaSourceFactory(app)
+                    .setDataSourceFactory(factory)
+                    .setDrmSessionManagerProvider(drmProvider)
             )
             .build()
         instance.addListener(object : Player.Listener {
@@ -251,7 +273,39 @@ class PlayerVm : ViewModel() {
         }
         val licenseUrl = channel.urlLicense.trim()
         val uuid = drmUuidFor(channel.jenis)
-        if (licenseUrl.startsWith("http", ignoreCase = true) && uuid != null) {
+        // ClearKey DRM dari SamuraiTV (kid:key hex) — lisensi JSON lokal, no server.
+        val ckObj = try {
+            org.json.JSONObject(channel.clearkeys.ifBlank { "{}" })
+        } catch (_: Exception) { org.json.JSONObject() }
+        val hasKeys = ckObj.length() > 0
+        if (hasKeys) {
+            val keys = org.json.JSONArray()
+            val it = ckObj.keys()
+            while (it.hasNext()) {
+                val kid = it.next()
+                val key = ckObj.getString(kid)
+                if (kid.length == 32 && key.length == 32) {
+                    val ko = org.json.JSONObject()
+                    ko.put("kty", "oct")
+                    ko.put("k", b64url(hexBytes(key)))
+                    ko.put("kid", b64url(hexBytes(kid)))
+                    keys.put(ko)
+                }
+            }
+            if (keys.length() > 0) {
+                val lic = org.json.JSONObject()
+                lic.put("keys", keys)
+                lic.put("type", "temporary")
+                clearkeyRef.set(lic.toString())
+                builder.setDrmConfiguration(
+                    MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
+                        .setPlayClearContentWithoutKey(true)
+                        .setMultiSession(true)
+                        .build()
+                )
+            } else clearkeyRef.set(null)
+        } else clearkeyRef.set(null)
+        if (!hasKeys && licenseUrl.startsWith("http", ignoreCase = true) && uuid != null) {
             builder.setDrmConfiguration(
                 MediaItem.DrmConfiguration.Builder(uuid)
                     .setLicenseUri(licenseUrl)
@@ -262,6 +316,15 @@ class PlayerVm : ViewModel() {
         }
         return builder.build()
     }
+
+    private fun hexBytes(s: String): ByteArray = ByteArray(s.length / 2) { i ->
+        s.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+    }
+
+    /** Base64 URL-safe tanpa padding (format kunci ClearKey / EME). */
+    private fun b64url(b: ByteArray): String = android.util.Base64.encodeToString(
+        b, android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP
+    )
 
     override fun onCleared() {
         player?.release()

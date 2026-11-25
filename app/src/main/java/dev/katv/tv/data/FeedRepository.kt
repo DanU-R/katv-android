@@ -186,14 +186,25 @@ object FeedRepository {
             out.put(row)
         }
 
-        // --- 3. SamuraiTV: JANGAN dijadikan event feed. Situsnya statis & basi
-        //     (HTML tidak berubah berhari-hari), jadi 69 event-nya hampir semua
-        //     SELESAI — bakal memenuhi tab EV dengan kartu mati. Yang dipakai
-        //     hanyalah SERVER-nya sebagai failover (lihat samurai_servers.json →
-        //     PlayerVm.advanceServer lewat field "servers" pada event PPW/EsportEx).
-        //     Contoh: beIN via cp11.adabmedia.com/hls2/bein1.m3u8 masih live. ---
-        // --- 1. PPW (api.ppv.st): streams[].streams[] dengan starts_at/ends_at epoch ---
+        // --- 1. SamuraiTV = SUMBER UTAMA. Asset hasil scrape livesmrtv.blogspot.com
+        //     (samurai_feed_refresh.py). Kalau admin update web, jalankan ulang scraper.
+        //     Event bawa multi-server + clearkey dari player page. ---
+        var samuraiCount = 0
         try {
+            val raw = context.assets.open("samurai_events.json").bufferedReader().use { it.readText() }
+            val arr = org.json.JSONArray(raw)
+            for (i in 0 until arr.length()) {
+                val row = arr.getJSONObject(i)
+                if (row.optString("hls", "").isBlank()) continue
+                add(row); samuraiCount++
+            }
+        } catch (e: Exception) { /* asset gagal -> fallback PPW/EsportEx */ }
+
+        // Kalau Samurai kosong, PAKAI PPW + EsportEx sbg cadangan (jangan biarkan tab EV kosong).
+        val useFallback = samuraiCount == 0
+
+        // --- 2. PPW (api.ppv.st) --- hanya kalau Samurai kosong
+        if (useFallback) try {
             val ppw = org.json.JSONObject(fetchUrl(PPW_API))
             val cats = ppw.optJSONArray("streams")
             if (cats != null) for (i in 0 until cats.length()) {
@@ -256,8 +267,8 @@ object FeedRepository {
             }
         } catch (e: Exception) { /* PPW gagal -> coba esportex */ }
 
-        // --- 2. EsportEx (api.esportex.site): per kategori, kickoff string WIB ---
-        try {
+        // --- 3. EsportEx --- hanya kalau Samurai kosong
+        if (useFallback) try {
             val api = org.json.JSONObject(fetchUrl(EVENTS_API))
             val cats = api.keys()
             while (cats.hasNext()) {
@@ -318,7 +329,7 @@ object FeedRepository {
         var count = 0
         val fields = arrayOf("region","region_name","id","name","tagline","hls","logo","jenis",
             "is_live","is_movie","premium","subtitle","namespace","alpha_2_code","country_name",
-            "t_stamp","s_stamp","header_iptv","header_license","url_license","fake_event","servers")
+            "t_stamp","s_stamp","header_iptv","header_license","url_license","fake_event","servers","clearkeys")
         // EVENTS (EV): SamuraiTV + 2 API jadwal dinamis (PPW + EsportEx), dedup.
         // BitTV EV.json sudah basi -> dipakai hanya sbg fallback terakhir.
         val eventsJson = buildEventsJson(context)

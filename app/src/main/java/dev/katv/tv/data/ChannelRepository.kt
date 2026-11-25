@@ -30,7 +30,8 @@ data class ChannelDto(
     @SerialName("header_license") val headerLicense: String = "",
     @SerialName("url_license") val urlLicense: String = "",
     @SerialName("fake_event") val fakeEvent: String = "",
-    @SerialName("servers") val servers: String = ""   // JSON [{name,url}, ...] — semua server/multi-stream event
+    @SerialName("servers") val servers: String = "",  // JSON [{name,url}, ...] — semua server/multi-stream event
+    @SerialName("clearkeys") val clearkeys: String = ""  // JSON {kid:key} — ClearKey DRM dari player page
 )
 
 /** Region/kategori — dipakai sebagai tab dinamis. */
