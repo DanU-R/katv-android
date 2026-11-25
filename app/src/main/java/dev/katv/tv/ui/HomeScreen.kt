@@ -230,11 +230,15 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
     // Buka fullscreen TIDAK melepas player → tidak ada fetch ulang, tidak ada audio dobel.
     DisposableEffect(playerVm) {
         playerVm.onError = { _ ->
-            // Pakai URL yang benar-benar gagal, bukan index VM (boleh berubah saat fullscreen).
-            val idx = cards.indexOfFirst { it.channel.hls == playerVm.playingUrl }
-                .let { if (it >= 0) it else playerVm.index }
-            failed.value = failed.value + idx
-            advanceFrom(idx)
+            // Server alternatif dulu sebelum loncat channel.
+            val recovered = playerVm.advanceServer(context)
+            if (!recovered) {
+                // Pakai URL yang benar-benar gagal, bukan index VM (boleh berubah saat fullscreen).
+                val idx = cards.indexOfFirst { it.channel.hls == playerVm.playingUrl }
+                    .let { if (it >= 0) it else playerVm.index }
+                failed.value = failed.value + idx
+                advanceFrom(idx)
+            }
         }
         onDispose {
             // Jangan release: fullscreen / navigation harus tetap pakai player yang sama.

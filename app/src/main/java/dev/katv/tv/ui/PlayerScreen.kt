@@ -117,18 +117,26 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // Pasang listener ke VM SEBELUM pertama kali play (error saat prepare tertangkap).
     // currentIdx dibaca dari VM supaya callback selalu saw channel aktif.
     DisposableEffect(playerVm) {
-        playerVm.onError = { _: PlaybackException ->
-            val from = currentIdx
-            failed.value = failed.value + from
-            val dead = failed.value
-            val next = (1..cards.size).map { (from + it) % cards.size }.firstOrNull { it !in dead }
-            if (next != null) {
-                currentIdx = next
+        playerVm.onError = { _ ->
+            // Coba server alternatif dulu sebelum pindah channel.
+            val recovered = playerVm.advanceServer(context)
+            if (!recovered) {
                 error = null
-                retryKey++
+                val from = currentIdx
+                failed.value = failed.value + from
+                val dead = failed.value
+                val next = (1..cards.size).map { (from + it) % cards.size }.firstOrNull { it !in dead }
+                if (next != null) {
+                    currentIdx = next
+                    error = null
+                    retryKey++
+                } else {
+                    failed.value = emptySet()
+                    currentIdx = if (cards.isEmpty()) 0 else (from + 1) % cards.size
+                    error = null
+                    retryKey++
+                }
             } else {
-                failed.value = emptySet()
-                currentIdx = if (cards.isEmpty()) 0 else (from + 1) % cards.size
                 error = null
                 retryKey++
             }

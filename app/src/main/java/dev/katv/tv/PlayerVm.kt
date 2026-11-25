@@ -114,8 +114,47 @@ class PlayerVm : ViewModel() {
         get() = resolvingDeeplinkState.value
         set(value) { resolvingDeeplinkState.value = value }
 
+    /** Daftar server alternatif channel aktif (dari field "servers") + posisinya. */
+    private var serverList = listOf<String>()
+    private var serverIdx = -1
+    private var currentCard: ChannelCard? = null
+
+    /** Coba server berikutnya untuk channel yang sama. @return true kalau ada server baru diputar. */
+    fun advanceServer(context: Context): Boolean {
+        if (serverList.size < 2) return false
+        for (step in 1..serverList.size) {
+            val idx = (serverIdx + step) % serverList.size
+            val url = serverList[idx]
+            if (url == playingUrl && !url.isBlank()) continue
+            serverIdx = idx
+            currentCard?.let { card ->
+                val next = card.copy(channel = card.channel.copy(
+                    hls = url,
+                    jenis = if (url.contains(".m3u8", true)) "hls" else "dash-widevine"
+                ))
+                android.util.Log.d("KaTvFailover", "try server $idx/${serverList.size}: ${url.take(90)}")
+                playResolved(context, next, streamHeaders(next.channel), force = true)
+                return true
+            }
+        }
+        return false
+    }
+
     /** Ganti channel hanya kalau URL beda. Fullscreen = no-op → instan. */
     fun play(context: Context, card: ChannelCard, force: Boolean = false) {
+        // Simpan server alternatif untuk failover (dedup URL, kecuali URL utama).
+        currentCard = card
+        val urls = mutableListOf<String>()
+        try {
+            val arr = org.json.JSONArray(card.channel.servers.ifBlank { "[]" })
+            for (i in 0 until arr.length()) {
+                val u = arr.getJSONObject(i).optString("url", "")
+                if (u.isNotBlank() && u !in urls) urls.add(u)
+            }
+        } catch (_: Exception) {}
+        if (card.channel.hls.isNotBlank() && card.channel.hls !in urls) urls.add(0, card.channel.hls)
+        serverList = urls
+        serverIdx = urls.indexOf(card.channel.hls).let { if (it >= 0) it else -1 }
         // RCTI+ URL-nya bukan media — resolve dulu ke .m3u8/.mpd asli via visitorsToken.
         if (RctiResolver.isRctiPlayer(card.channel.hls)) {
             android.util.Log.d("KaTvDeep", "rcti branch entered: ${card.channel.hls.take(80)}")

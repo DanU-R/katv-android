@@ -116,7 +116,7 @@ object FeedRepository {
      * Bangun array JSON event dari 2 API jadwal dinamis (PPW + EsportEx).
      * Dedup by nama+jam biar event yang sama gak dobel. Return null kalau dua-duanya gagal.
      */
-    private fun buildEventsJson(): String? {
+    private fun buildEventsJson(context: Context): String? {
         val out = org.json.JSONArray()
         val seen = mutableSetOf<String>()
         fun add(row: org.json.JSONObject) {
@@ -132,6 +132,16 @@ object FeedRepository {
             if (full.isNotBlank() && !seen.add(full)) return
             out.put(row)
         }
+
+        // --- 3. SamuraiTV (livesmrtv.blogspot.com): 69 event + multi-server dari
+        //     scrape halaman player live.samuraitv.biz.id. Asset statis, dynamic status
+        //     tetap dihitung dari clock (t_stamp/s_stamp). Di-load duluan supaya event
+        //     unik (F1/MotoGP/UFC/dll) gak kalah dedup dari PPW/EsportEx. ---
+        try {
+            val raw = context.assets.open("samurai_events.json").bufferedReader().use { it.readText() }
+            val arr = org.json.JSONArray(raw)
+            for (i in 0 until arr.length()) add(arr.getJSONObject(i))
+        } catch (e: Exception) { /* asset gagal -> lewati */ }
 
         // --- 1. PPW (api.ppv.st): streams[].streams[] dengan starts_at/ends_at epoch ---
         try {
@@ -257,10 +267,10 @@ object FeedRepository {
         var count = 0
         val fields = arrayOf("region","region_name","id","name","tagline","hls","logo","jenis",
             "is_live","is_movie","premium","subtitle","namespace","alpha_2_code","country_name",
-            "t_stamp","s_stamp","header_iptv","header_license","url_license","fake_event")
-        // EVENTS (EV): gabungkan 2 API jadwal dinamis (PPW + EsportEx), dedup.
+            "t_stamp","s_stamp","header_iptv","header_license","url_license","fake_event","servers")
+        // EVENTS (EV): SamuraiTV + 2 API jadwal dinamis (PPW + EsportEx), dedup.
         // BitTV EV.json sudah basi -> dipakai hanya sbg fallback terakhir.
-        val eventsJson = buildEventsJson()
+        val eventsJson = buildEventsJson(context)
         if (eventsJson != null) {
             val arr = org.json.JSONArray(eventsJson)
             for (i in 0 until arr.length()) {
