@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Splash sistem = obsidian polos. Tidak ada bitmap/ikon/huruf.
+         Wordmark KaTv ditampilkan penuh oleh Compose SplashScreen. -->
     <item android:drawable="@color/katv_obsidian" />
-    <!-- Pre-31: splash sistem = windowBackground statis dengan ikon di tengah. -->
-    <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@drawable/splash_icon_clean" />
-    </item>
 </layer-list>
