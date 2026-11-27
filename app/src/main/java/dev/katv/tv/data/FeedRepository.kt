@@ -35,6 +35,12 @@ object FeedRepository {
     private const val EVENTS_API = "https://api.esportex.site/api/streams"
     // Source PPW (api.ppv.st) — 176 event, 11 kategori, starts_at/ends_at unix epoch.
     private const val PPW_API = "https://api.ppv.st/api/streams"
+    // Feed Samurai hasil scrape VPS — PUBLIK di GitHub raw, auto-update via cron.
+    private const val SAMURAI_FEED_URL =
+        "https://raw.githubusercontent.com/DanU-R/katv-android/main/samurai_events.json"
+    // Endpoint resmi Blogger (JSON, no captcha) — jadwal event paling segar.
+    private const val BLOGGER_JSON =
+        "https://livesmrtv.blogspot.com/feeds/posts/default?alt=json&max-results=5"
     private val KEY = hex("99ca59b508fda1da71e41bb78f1e7bca")
     private val IV = hex("c6611a2a4f843de1c65e32eab81b325f")
     private val REGIONS = listOf(
@@ -94,8 +100,9 @@ object FeedRepository {
     }
 
     private fun fetchUrl(url: String): String = URL(url).openConnection().let { c ->
-        c.connectTimeout = 4000
-        c.readTimeout = 6000
+        c.connectTimeout = 6000
+        c.readTimeout = 8000
+        c.setRequestProperty("Cache-Control", "no-cache")
         c.getInputStream().bufferedReader().use { it.readText() }
     }
     private fun fetch(code: String): String = fetchUrl(SRC.format(code))
@@ -166,6 +173,67 @@ object FeedRepository {
     }
 
     /**
+     * Ambil jadwal PALING SEGAR dari endpoint JSON resmi Blogger (no captcha).
+     * Cocokkan tombol javascript:xxx() dengan stream dari feed GitHub (by function name
+     * yang gue simpan sbg "namespace" di feed). Return array event siap pakai.
+     */
+    private fun fetchBloggerLive(base: org.json.JSONArray): org.json.JSONArray {
+        val out = org.json.JSONArray()
+        try {
+            val resp = org.json.JSONObject(fetchUrl(BLOGGER_JSON))
+            val entries = resp.optJSONObject("feed")?.optJSONArray("entry") ?: return out
+            // index stream dari feed GitHub: namespace = "fn1,fn2" / servers sudah ada
+            val byName = HashMap<String, org.json.JSONObject>()
+            for (i in 0 until base.length()) {
+                val r = base.getJSONObject(i)
+                val nm = r.optString("name", "").lowercase()
+                byName[nm] = r
+            }
+            for (e in 0 until entries.length()) {
+                val html = entries.getJSONObject(e).optJSONObject("content")?.optString("\$t", "") ?: ""
+                val blocks = html.split("<div class=\"kotak2")
+                for (b in blocks.drop(1)) {
+                    val tm = Regex("data-time=\"([^\"]+)\"").find(b)?.groupValues?.get(1) ?: continue
+                    val dur = Regex("data-duration=\"(\\d+)\"").find(b)?.groupValues?.get(1)?.toIntOrNull() ?: 120
+                    val league = Regex("class=\"league-name\">([^<]+)").find(b)?.groupValues?.get(1)
+                        ?.replace(Regex("^[^\\w\\s]+"), "")?.trim() ?: ""
+                    val teams = Regex("class=\"team\">\\s*<img[^>]*>\\s*<span>([^<]+)</span>")
+                        .findAll(b).map { it.groupValues[1].trim() }.toList()
+                    val fns = Regex("javascript:(\\w+)\\(\\)").findAll(b).map { it.groupValues[1] }.toList()
+                    val start = try {
+                        java.time.OffsetDateTime.parse(tm).toInstant().epochSecond.toString()
+                    } catch (_: Exception) { "" }
+                    if (start.isBlank()) continue
+
+                    // cari baris feed lama yang cocok (nama tim) buat dapet server + clearkey
+                    val name = if (teams.size >= 2) teams.joinToString(" vs ") else (teams.firstOrNull() ?: league)
+                    var matched: org.json.JSONObject? = null
+                    for ((k, v) in byName) {
+                        if (k.contains(name.lowercase()) || name.lowercase().contains(k)) { matched = v; break }
+                    }
+                    val row = org.json.JSONObject()
+                    val servers = matched?.optString("servers", "[]") ?: "[]"
+                    val arrS = org.json.JSONArray(servers)
+                    if (arrS.length() == 0) continue  // belum ada stream dari GitHub -> skip
+                    row.put("region", "EV"); row.put("region_name", "Events")
+                    row.put("id", "blg_" + start + "_" + name.hashCode())
+                    row.put("name", name); row.put("tagline", "$league | $name")
+                    row.put("hls", arrS.getJSONObject(0).optString("url", ""))
+                    row.put("servers", servers)
+                    row.put("clearkeys", matched?.optString("clearkeys", "{}") ?: "{}")
+                    row.put("logo", matched?.optString("logo", "") ?: "")
+                    row.put("jenis", if (row.optString("hls").contains(".m3u8", true)) "hls" else "dash-widevine")
+                    row.put("namespace", league)
+                    row.put("t_stamp", start)
+                    row.put("s_stamp", (start.toLong() + dur * 60).toString())
+                    out.put(row)
+                }
+            }
+        } catch (e: Exception) { /* gagal -> pakai feed GitHub apa adanya */ }
+        return out
+    }
+
+    /**
      * Bangun array JSON event dari API jadwal dinamis (PPW + EsportEx).
      * Dedup by nama+jam biar event yang sama gak dobel. Return null kalau dua-duanya gagal.
      */
@@ -186,19 +254,44 @@ object FeedRepository {
             out.put(row)
         }
 
-        // --- 1. SamuraiTV = SUMBER UTAMA. Asset hasil scrape livesmrtv.blogspot.com
-        //     (samurai_feed_refresh.py). Kalau admin update web, jalankan ulang scraper.
-        //     Event bawa multi-server + clearkey dari player page. ---
+        // --- 1. SamuraiTV = SUMBER UTAMA. Fetch dari GitHub raw (PUBLIK, auto-update
+        //     lewat cron VPS) → fallback ke asset APK kalau network gagal. ---
         var samuraiCount = 0
+        val samuraiRaw = try {
+            fetchUrl(SAMURAI_FEED_URL)
+        } catch (e: Exception) {
+            try {
+                context.assets.open("samurai_events.json").bufferedReader().use { it.readText() }
+            } catch (e2: Exception) { "" }
+        }
         try {
-            val raw = context.assets.open("samurai_events.json").bufferedReader().use { it.readText() }
-            val arr = org.json.JSONArray(raw)
+            val arr = org.json.JSONArray(samuraiRaw)
             for (i in 0 until arr.length()) {
                 val row = arr.getJSONObject(i)
                 if (row.optString("hls", "").isBlank()) continue
                 add(row); samuraiCount++
             }
-        } catch (e: Exception) { /* asset gagal -> fallback PPW/EsportEx */ }
+        } catch (e: Exception) { /* gagal parse -> fallback PPW/EsportEx */ }
+
+        // Jadwal PALING SEGAR langsung dari JSON endpoint Blogger (no captcha),
+        // stream-nya dicocokkan ke feed GitHub di atas. Kalau dapat event baru, pakai ini.
+        val blogger = fetchBloggerLive(org.json.JSONArray(samuraiRaw.ifBlank { "[]" }))
+        if (blogger.length() > samuraiCount) {
+            // rebuild out dari Blogger (hapus baris Samurai lama, PPW belum masuk)
+            val rebuilt = org.json.JSONArray()
+            for (i in 0 until blogger.length()) rebuilt.put(blogger.getJSONObject(i))
+            // replace isi out dengan rebuilt (add() akan dedup lagi kalau dipanggil)
+            var i = out.length() - 1
+            while (i >= 0) {
+                val r = out.getJSONObject(i)
+                if (r.optString("id", "").startsWith("smr_")) out.remove(i)
+                i--
+            }
+            for (i2 in 0 until rebuilt.length()) {
+                val r = rebuilt.getJSONObject(i2)
+                if (r.optString("hls", "").isNotBlank()) out.put(r)
+            }
+        }
 
         // Kalau Samurai kosong, PAKAI PPW + EsportEx sbg cadangan (jangan biarkan tab EV kosong).
         val useFallback = samuraiCount == 0
