@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PlayerView dengan TextureView: SurfaceView standar di-recreate saat rotasi/inset
+     berubah, dan surface baru yang attach ke ExoPlayer yang sedang playing bikin frame
+     stall ("freeze"). TextureView tetap hidup di hierarchy → transisi hero→fullscreen mulus. -->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/fs_player"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="false"
+    app:resize_mode="fit"
+    app:show_buffering="never" />

@@ -78,13 +78,12 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
         val controller = win?.let { WindowInsetsControllerCompat(it, it.decorView) }
         val barTypes = WindowInsetsCompat.Type.statusBars() or
             WindowInsetsCompat.Type.navigationBars()
-        // Hide SEKARANG + lagi setelah window selesai layout (rotate ke landscape).
+        // Hide SEKARANG + sekali lagi setelah layout selesai (jangan 3x — layout thrash
+        // bikin surface detach/attach berulang = frame stall di beberapa device).
         controller?.hide(barTypes)
         val decor = win?.decorView
         val hideLater = Runnable { controller?.hide(barTypes) }
-        decor?.post(hideLater)
-        decor?.postDelayed(hideLater, 250)
-        decor?.postDelayed(hideLater, 800)
+        decor?.postDelayed(hideLater, 300)
         onDispose {
             decor?.removeCallbacks(hideLater)
             // Selalu balik ke PORTRAIT saat keluar fullscreen. Jangan pakai 'previous':
@@ -293,10 +292,12 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
             // dan tidak ada fetch HLS ulang -> fullscreen langsung tampil.
             AndroidView(
                 factory = { ctx ->
-                    val view = PlayerView(ctx)
+                    // Inflate dari XML supaya surface_type=texture_view aktif (API Media3
+                    // tidak punya setSurfaceType). SurfaceView default bikin freeze saat rotasi.
+                    val view = android.view.LayoutInflater.from(ctx)
+                        .inflate(dev.katv.tv.R.layout.view_fullscreen_player, null) as PlayerView
                     fsViewRef.value = view
                     view.player = playerVm.ensurePlayer(ctx)
-                    view.useController = false
                     view.controllerShowTimeoutMs = 0
                     view.tag = playerVm.player
                     view.setOnClickListener {
