@@ -71,24 +71,22 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     val context = LocalContext.current
     DisposableEffect(Unit) {
         val activity = context as? ComponentActivity
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        // JANGAN paksa rotasi. Rotasi memicu recreate SurfaceView → surface baru attach ke
+        // ExoPlayer yang masih playing → frame stall ("freeze") di banyak device.
+        // Video tetap di-fit penuh (RESIZE_MODE_FIT) mengikuti orientasi apa pun.
         val win = activity?.window
         // Jangan biarkan konten masuk ke area system bar.
         if (win != null) WindowCompat.setDecorFitsSystemWindows(win, false)
         val controller = win?.let { WindowInsetsControllerCompat(it, it.decorView) }
         val barTypes = WindowInsetsCompat.Type.statusBars() or
             WindowInsetsCompat.Type.navigationBars()
-        // Hide SEKARANG + sekali lagi setelah layout selesai (jangan 3x — layout thrash
-        // bikin surface detach/attach berulang = frame stall di beberapa device).
+        // Hide sekali + sekali setelah layout stabil (bukan 3x — layout thrash).
         controller?.hide(barTypes)
         val decor = win?.decorView
         val hideLater = Runnable { controller?.hide(barTypes) }
         decor?.postDelayed(hideLater, 300)
         onDispose {
             decor?.removeCallbacks(hideLater)
-            // Selalu balik ke PORTRAIT saat keluar fullscreen. Jangan pakai 'previous':
-            // navigasi sebelumnya bisa meninggalkan landscape, bikin list home kepotong.
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             if (win != null) WindowCompat.setDecorFitsSystemWindows(win, true)
             controller?.show(barTypes)
         }
@@ -292,12 +290,14 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
             // dan tidak ada fetch HLS ulang -> fullscreen langsung tampil.
             AndroidView(
                 factory = { ctx ->
-                    // Inflate dari XML supaya surface_type=texture_view aktif (API Media3
-                    // tidak punya setSurfaceType). SurfaceView default bikin freeze saat rotasi.
-                    val view = android.view.LayoutInflater.from(ctx)
-                        .inflate(dev.katv.tv.R.layout.view_fullscreen_player, null) as PlayerView
+                    val view = PlayerView(ctx)
+                    // SurfaceView default: decoder software (OMX.google.h264, umum di
+                    // Redroid/TV box murah) TIDAK support SurfaceTexture/TextureView —
+                    // codec langsung released → layar hitam. Freeze saat rotasi ditangani
+                    // dengan menahan view (lihat AndroidView tanpa key / DisposableEffect).
                     fsViewRef.value = view
                     view.player = playerVm.ensurePlayer(ctx)
+                    view.useController = false
                     view.controllerShowTimeoutMs = 0
                     view.tag = playerVm.player
                     view.setOnClickListener {
