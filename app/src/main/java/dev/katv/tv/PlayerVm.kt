@@ -268,16 +268,36 @@ class PlayerVm : ViewModel() {
 
     fun applyQuality() { player?.let { applyQuality(it) } }
 
-    /** Force-highest + semua subtitle (text track) dimatikan. */
+    /**
+     * Atur pemilihan track video + matikan subtitle.
+     *
+     * JANGAN gabungkan forceHighestSupportedBitrate(true) dengan batas ukuran.
+     * Kombinasi itu memaksa ExoPlayer memilih track tertinggi yang TIDAK bisa
+     * didekode (mis. 1080p di decoder software Redroid) → player berhenti di
+     * STATE_IDLE selamanya, frame beku, 40 detik tidak pulih. Terbukti di VM.
+     *
+     * Aturan:
+     *  - AUTO  → lepas semua batas + force highest bitrate (kualitas terbaik yang
+     *            didukung perangkat; ini yang benar-benar stabil).
+     *  - 1080/720/480 → batasi tinggi saja TANPA force highest, supaya ExoPlayer
+     *            bebas memilih bitrate di dalam batas itu yang benar-benar bisa
+     *            didekode perangkat.
+     */
     fun applyQuality(instance: ExoPlayer) {
-        val builder = instance.trackSelectionParameters.buildUpon()
-            .setForceHighestSupportedBitrate(true)
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
         val choice = quality.coerceIn(qualityHeights.indices)
-        if (choice == 0) builder.clearVideoSizeConstraints()
-        else builder.setMaxVideoSize(Int.MAX_VALUE, qualityHeights[choice])
+        val maxH = qualityHeights[choice]
+        val builder = instance.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        if (maxH == Int.MAX_VALUE) {
+            builder.clearVideoSizeConstraints()
+            builder.setForceHighestSupportedBitrate(true)
+        } else {
+            // setMaxVideoSize(width = tanpa batas, height = batas pilihan user)
+            builder.setMaxVideoSize(Int.MAX_VALUE, maxH)
+            builder.setForceHighestSupportedBitrate(false)
+        }
         instance.trackSelectionParameters = builder.build()
-        logTrackState(instance, "applyQuality q=$choice")
+        logTrackState(instance, "applyQuality q=$choice maxH=$maxH")
     }
 
     /**
