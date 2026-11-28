@@ -116,7 +116,10 @@ object ChannelRepository {
                 "nfl","nba","nhl","mlb","soccer","football","basketball","tennis","golf",
                 "rugby","cricket","motogp","formula","ufc","boxing","sports","league",
                 "liga","premier","serie a","laliga","bundesliga","champions","cup",
-                "fc ","cf ","if ","ifk ","bk ","sports racing","fox footy","rally"
+                "fc ","cf ","if ","ifk ","bk ","sports racing","fox footy","rally",
+                // tambahan: event non-sepakbola yang sering muncul di Samurai
+                "badminton","volleyball","basket","f1","motorsport","athletics","swimming",
+                "wrestling","mma","esport","darts","snooker","bowling","cycling"
             )
             fun isSport(ch: ChannelDto): Boolean {
                 val n = ch.name.lowercase()
@@ -124,6 +127,8 @@ object ChannelRepository {
                 if (sportWords.any { n.contains(it) || tag.contains(it) }) return true
                 // format pertandingan "X vs Y" / "X at Y" → olahraga
                 if (n.contains(" vs ") || n.contains(" vs. ") || n.contains(" at ")) return true
+                // Event berjadwal yang punya tagline "<liga> | <nama>" juga dianggap sport.
+                if (ch.tStamp.toLongOrNull()?.let { it > 0 } == true) return true
                 return false
             }
             val events = all.filter { it.region.equals("EV", true) }
@@ -137,9 +142,11 @@ object ChannelRepository {
                         ch.tagline.trim().startsWith("LIVE 24/7", true) -> true
                         else -> {
                             val s = ch.sStamp.toLongOrNull() ?: 0L
-                            // Tampilkan event yang masih LIVE atau belum mulai, plus yang baru
-                            // selesai < 6 jam (biar hasil pertandingan masih bisa dilihat).
-                            s >= nowSec - 6 * 3600
+                            // s kosong/0 → jangan buang! Pakai t_stamp sebagai acuan
+                            // (anggap durasi 4 jam) supaya event valid tidak hilang hanya
+                            // karena sumber tidak mengirim s_stamp.
+                            if (s <= 0L) t >= nowSec - 12 * 3600
+                            else s >= nowSec - 6 * 3600
                         }
                     }
                 }
@@ -203,7 +210,10 @@ object ChannelRepository {
         // di pool region bikin cards.indexOf(current) di Home mengembalikan index pertama,
         // bukan yang ditap user → fullscreen memutar channel lain yang tampak mirip.
         // Grid home & fullscreen jadi identik dan index-stable.
-        val picked = ordered.distinctBy { it.id }.take(40)
+        // EV: tampilkan SEMUA event (bukan 40) — event hari ini bisa >40 dan user perlu
+        // lihat semuanya. Tab channel biasa tetap dibatasi 40 demi performa grid.
+        val limit = if (tabCode.equals("EV", true)) 200 else 40
+        val picked = ordered.distinctBy { it.id }.take(limit)
         return picked.mapIndexed { index, ch ->
             ChannelCard(
                 number = "%02d".format(index + 1),

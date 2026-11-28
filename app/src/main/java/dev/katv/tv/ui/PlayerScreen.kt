@@ -112,7 +112,9 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
         )
     }
     val error = remember { mutableStateOf<String?>(null) }
-    var retryKey by remember { mutableIntStateOf(0) }
+    // MediaId yang menyebabkan error — dipakai untuk tahu kapan error sudah basi.
+    val errorMediaId = remember { mutableStateOf<String?>(null) }
+    val retryKey = remember { mutableIntStateOf(0) }
     val retryCount = remember { mutableIntStateOf(0) }
     val maxRetries = 3
     val failed = remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -131,6 +133,7 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 // yang membuat UI terlihat freeze dan hammer player terus-menerus.
                 if (retryCount.intValue >= maxRetries) {
                     failed.value = emptySet()
+                    errorMediaId.value = playerVm.player?.currentMediaItem?.mediaId
                     error.value = "Semua channel gagal dimuat.\nCek koneksi / coba lagi."
                     loading.value = false
                     // JANGAN reset retryCount di sini — kalau direset, handler berikutnya
@@ -139,10 +142,12 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 } else if (playerVm.deeplinkMode) {
                     // Deep-link: TIDAK ada channel lain untuk dicoba. Tampilkan error
                     // (sebelumnya layar cuma hitam tanpa info apa pun).
+                    errorMediaId.value = playerVm.player?.currentMediaItem?.mediaId
                     error.value = "Stream tidak bisa dimuat.\nURL mungkin sudah mati / diblok."
                     loading.value = false
                 } else if (cards.isEmpty()) {
                     // Tidak ada card sama sekali: jangan loop, tampilkan pesan.
+                    errorMediaId.value = playerVm.player?.currentMediaItem?.mediaId
                     error.value = "Tidak ada channel tersedia."
                     loading.value = false
                 } else {
@@ -157,11 +162,11 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                         (from + 1) % cards.size
                     }
                     error.value = null
-                    retryKey++
+                    retryKey.intValue++
                 }
             } else {
                 error.value = null
-                retryKey++
+                retryKey.intValue++
             }
         }
         onDispose {
@@ -175,14 +180,25 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // Kalau URL yang sama sudah diputar (kasus normal buka fullscreen dari hero),
     // KITA TIDAK memanggil play() sama sekali: murni pasang PlayerView ke player yang
     // sudah ada → tidak ada re-prepare, tidak ada kedip "Memuat channel…".
-    LaunchedEffect(currentIdx, retryKey, playerVm.resolvingDeeplinkState.value) {
-        android.util.Log.d("KaTvDeep", "PlayerScreen effect: resolving=${playerVm.resolvingDeeplinkState.value} idx=$currentIdx")
-        if (playerVm.deeplinkMode || playerVm.resolvingDeeplinkState.value) return@LaunchedEffect // deep-link: jangan auto-play dari grid
+    LaunchedEffect(currentIdx, retryKey.intValue, playerVm.resolvingDeeplinkState.value) {
+        android.util.Log.d("KaTvDeep", "PlayerScreen effect: resolving=${playerVm.resolvingDeeplinkState.value} idx=$currentIdx retry=$retryKey")
+        // Deep-link: JANGAN di-skip kalau ini RETRY manual (retryKey>0) — user menekan
+        // RETRY harus benar-benar memuat ulang URL, bukan kembali ke layar hitam.
+        if (playerVm.resolvingDeeplinkState.value) return@LaunchedEffect
+        if (playerVm.deeplinkMode) {
+            if (retryKey.intValue > 0) {
+                playerVm.deeplinkCard?.let { dc ->
+                    playerVm.play(context, dc, force = true)
+                    loading.value = true
+                }
+            }
+            return@LaunchedEffect
+        }
         // Anchor identitas: saat MASUK first compose (retryKey==0), index VM bisa drift
         // (duplicate channel / grid beda). Pakai URL yang benar-benar diputar di home
         // sebagai source of truth supaya fullscreen selalu menampilkan channel yang sama.
         // Retry (retryKey>0) SENGAJA dilewati supaya fallback error tetap jalan.
-        if (retryKey == 0 && playerVm.playingUrl.isNotBlank()) {
+        if (retryKey.intValue == 0 && playerVm.playingUrl.isNotBlank()) {
             val anchor = cards.indexOfFirst { it.channel.hls == playerVm.playingUrl }
             if (anchor >= 0 && anchor != currentIdx) {
                 currentIdx = anchor
@@ -195,7 +211,7 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
             playerVm.selectedIndex = currentIdx
             val already = playerVm.playingUrl == target.channel.hls
             val playing = playerVm.player?.isPlaying == true
-            if (already && playing && retryKey == 0) {
+            if (already && playing && retryKey.intValue == 0) {
                 // Pure attach: stream sudah hidup, jangan ganti MediaItem / re-prepare.
                 // Cukup pastikan playWhenReady aktif & player benar-benar playing — setelah
                 // PlayerView baru attach, surface swap bisa bikin stream rapuh diam sesaat.
@@ -203,9 +219,9 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 if (playerVm.player?.isPlaying == false) playerVm.player?.play()
                 loading.value = false
             } else {
-                playerVm.play(context, target, force = retryKey > 0)
+                playerVm.play(context, target, force = retryKey.intValue > 0)
                 // Genuine switch / retry yang menampilkan overlay.
-                loading.value = retryKey > 0 || !already
+                loading.value = retryKey.intValue > 0 || !already
             }
         }
     }
@@ -213,22 +229,36 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // Hapus overlay "Memuat" begitu frame pertama mulai diputar — ATAU setelah timeout.
     // Dua jalan keluar ini mencegah teks "Memuat channel…" nempel selamanya saat
     // isPlaying sempat fluktuasi (surface swap / HLS rebuffer) padahal video sudah tampil.
-    // Pantau status player: bersihkan overlay error begitu video BENAR-BENAR playing.
-    // Tanpa ini, overlay "Playback error" dari percobaan server sebelumnya tetap nempel
-    // di atas video yang sudah sukses (kelihatan seperti gagal padahal jalan).
+    // Pantau status player: bersihkan overlay error HANYA kalau video benar-benar playing.
+    // Catatan: STATE_READY saja tidak cukup — stream bisa READY tapi frame diam (stall),
+    // dan kalau kita anggap "sukses", pesan error yang sah malah hilang.
+    // Sekalian reset retryCount saat sukses, supaya error berikutnya (channel lain)
+    // dapat jatah retry penuh lagi — bukan langsung mentok.
+    // Pantau status player. Error dihapus HANYA kalau media item yang sekarang berbeda
+    // dari media yang error (artinya channel berganti & berhasil). Kalau media sama,
+    // error tetap tampil walau posisi > 0 dari stream sebelumnya — sumber bug "hitam
+    // tanpa pesan" adalah menghapus error berdasarkan posisi player yang masih nyangkut.
     LaunchedEffect(playerVm) {
         while (true) {
-            kotlinx.coroutines.delay(400)
+            kotlinx.coroutines.delay(500)
             val p = playerVm.player
-            val nowPlaying = p?.isPlaying == true || p?.playbackState == Player.STATE_READY
-            if (nowPlaying) {
-                if (error.value != null) error.value = null
+            val nowMedia = p?.currentMediaItem?.mediaId ?: ""
+            val pos = p?.currentPosition ?: 0L
+            val playing = p?.isPlaying == true
+            if (errorMediaId.value != null && nowMedia.isNotEmpty() && nowMedia != errorMediaId.value && (playing || pos > 0L)) {
+                // channel baru sudah jalan → bersihkan error lama
+                error.value = null
+                errorMediaId.value = null
+                loading.value = false
+                retryCount.intValue = 0
+            } else if (playing && error.value == null) {
                 if (loading.value) loading.value = false
+                if (retryCount.intValue != 0) retryCount.intValue = 0
             }
         }
     }
 
-    LaunchedEffect(loading.value, retryKey) {
+    LaunchedEffect(loading.value, retryKey.intValue) {
         var waited = 0L
         while (loading.value) {
             kotlinx.coroutines.delay(150)
@@ -246,7 +276,7 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     var muted by remember { mutableStateOf(playerVm.muted) }
 
     // Auto-hide controls after 8 s of inactivity. Tap on video toggles + resets the timer.
-    LaunchedEffect(controlsVisible, retryKey, controlsHideTick) {
+    LaunchedEffect(controlsVisible, retryKey.intValue, controlsHideTick) {
         if (controlsVisible) {
             delay(8000)
             controlsVisible = false
@@ -316,7 +346,7 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                     fontSize = 13.sp,
                     modifier = Modifier.clickable {
                         ChannelRepository.clearCache()
-                        retryKey++
+                        retryKey.intValue++
                     }
                 )
             }
@@ -329,8 +359,11 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
         // drag vertikal, tap tetap diteruskan ke PlayerView (klik toggle controls).
         Box(Modifier.fillMaxSize()) {
             val u = (if (playerVm.deeplinkMode) playerVm.deeplinkCard else cards.getOrNull(currentIdx))?.channel?.hls.orEmpty()
-            val isEmbed = !u.contains(".m3u8", true) && !u.contains(".mp4", true) &&
-                (u.startsWith("http") && (u.contains("embed") || u.contains("player") || u.contains("/#") || u.contains("iframe")))
+            // Sama seperti hero: .mpd/cenc/manifest adalah stream langsung (DASH), BUKAN embed.
+            val isDirect = u.contains(".m3u8", true) || u.contains(".mp4", true) ||
+                u.contains(".mpd", true) || u.contains("/cenc", true) || u.contains("/manifest", true)
+            val isEmbed = !isDirect && u.startsWith("http") &&
+                (u.contains("embed") || u.contains("player") || u.contains("/#") || u.contains("iframe"))
             if (isEmbed && u.isNotBlank()) {
                 // Stream berbasis embed HTML (PPW/EsportEx): pakai browser engine
                 // dengan ad-block + auto-unmute, bukan ExoPlayer (yang gak paham HTML).
@@ -569,8 +602,12 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 Spacer(Modifier.height(16.dp))
                 Text("RETRY", color = Vermilion, fontFamily = MonoFont, fontWeight = FontWeight.Bold,
                     fontSize = 14.sp, modifier = Modifier.clickable {
-                        failed.value = failed.value + currentIdx
-                        retryKey++
+                        // Retry manual harus mengulang dari nol: reset counter & daftar gagal,
+                        // kalau tidak, retryCount sudah mentok → langsung error lagi.
+                        retryCount.intValue = 0
+                        failed.value = emptySet()
+                        playerVm.resetServersForRetry()
+                        retryKey.intValue++
                         loading.value = true
                         error.value = null
                     })

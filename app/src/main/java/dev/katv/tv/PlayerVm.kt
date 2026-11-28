@@ -145,6 +145,12 @@ class PlayerVm : ViewModel() {
     /** Server yang sudah dicoba & gagal — cegah mencoba server yang sama berulang. */
     private val triedServers = mutableSetOf<String>()
 
+    /** Reset daftar server yang sudah dicoba — dipakai tombol RETRY manual. */
+    fun resetServersForRetry() {
+        triedServers.clear()
+        serverIdx = -1
+    }
+
     /** Coba server berikutnya untuk channel yang sama. @return true kalau ada server baru diputar. */
     fun advanceServer(context: Context): Boolean {
         if (serverList.size < 2) return false
@@ -159,6 +165,9 @@ class PlayerVm : ViewModel() {
                 hls = url,
                 jenis = if (url.contains(".m3u8", true)) "hls" else "dash-widevine"
             ))
+            // PENTING: update currentCard supaya percobaan berikutnya memakai URL server
+            // yang baru (kalau tidak, currentCard tetap URL lama dan failover mengulang).
+            currentCard = next
             android.util.Log.d("KaTvFailover", "try server $idx/${serverList.size}: ${url.take(90)}")
             playResolved(context, next, streamHeaders(next.channel), force = true)
             return true
@@ -171,6 +180,10 @@ class PlayerVm : ViewModel() {
     /** Ganti channel hanya kalau URL beda. Fullscreen = no-op → instan. */
     fun play(context: Context, card: ChannelCard, force: Boolean = false) {
         // Simpan server alternatif untuk failover (dedup URL, kecuali URL utama).
+        // Reset daftar "sudah dicoba" HANYA kalau ini channel yang benar-benar berbeda —
+        // kalau direset tiap play(), failover tidak pernah selesai dan bisa loop selamanya.
+        val isNewChannel = card.channel.id != currentCard?.channel?.id
+        if (isNewChannel) triedServers.clear()
         currentCard = card
         val urls = mutableListOf<String>()
         try {
@@ -280,11 +293,15 @@ class PlayerVm : ViewModel() {
         }
         val licenseUrl = channel.urlLicense.trim()
         val uuid = drmUuidFor(channel.jenis)
-        // ClearKey DRM dari SamuraiTV (kid:key hex) — lisensi JSON lokal, no server.
+        // ClearKey DRM dari SamuraiTV — HANYA untuk stream DASH/cenc yang benar-benar
+        // terenkripsi. Kalau dipaksa ke HLS biasa, ExoPlayer menganggap konten DRM dan
+        // gagal buka (error "Source error" / layar hitam).
+        val isDash = channel.jenis.startsWith("dash", true) || channel.hls.contains(".mpd", true) ||
+            channel.hls.contains("/cenc", true)
         val ckObj = try {
             org.json.JSONObject(channel.clearkeys.ifBlank { "{}" })
         } catch (_: Exception) { org.json.JSONObject() }
-        val hasKeys = ckObj.length() > 0
+        val hasKeys = isDash && ckObj.length() > 0
         if (hasKeys) {
             val keys = org.json.JSONArray()
             val it = ckObj.keys()
@@ -306,8 +323,9 @@ class PlayerVm : ViewModel() {
                 clearkeyRef.set(lic.toString())
                 builder.setDrmConfiguration(
                     MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID)
-                        .setPlayClearContentWithoutKey(true)
-                        .setMultiSession(true)
+                        // single-session: setMultiSession(true) untuk ClearKey lokal justru
+                        // membuat ExoPlayer meminta sesi tambahan yang tidak ada.
+                        .setMultiSession(false)
                         .build()
                 )
             } else clearkeyRef.set(null)

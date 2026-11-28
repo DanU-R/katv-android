@@ -209,12 +209,23 @@ object FeedRepository {
                     val name = if (teams.size >= 2) teams.joinToString(" vs ") else (teams.firstOrNull() ?: league)
                     var matched: org.json.JSONObject? = null
                     for ((k, v) in byName) {
+                        if (k.isBlank()) continue
                         if (k.contains(name.lowercase()) || name.lowercase().contains(k)) { matched = v; break }
                     }
-                    val row = org.json.JSONObject()
+                    // Fallback: cocokkan lewat NAMA FUNGSI javascript (ch1, bein1, ...) yang
+                    // tersimpan di field "namespace" feed. Tanpa ini, event yang timnya beda
+                    // ejaan (mis. "FC" vs "F.C.") hilang total dari daftar.
+                    if (matched == null && fns.isNotEmpty()) {
+                        for ((k, v) in byName) {
+                            val ns = v.optString("namespace", "").lowercase()
+                            if (ns.isBlank()) continue
+                            if (fns.any { ns.contains(it.lowercase()) }) { matched = v; break }
+                        }
+                    }
                     val servers = matched?.optString("servers", "[]") ?: "[]"
-                    val arrS = org.json.JSONArray(servers)
-                    if (arrS.length() == 0) continue  // belum ada stream dari GitHub -> skip
+                    val arrS = try { org.json.JSONArray(servers) } catch (_: Exception) { org.json.JSONArray() }
+                    if (arrS.length() == 0) continue  // benar-benar tidak ada stream -> skip
+                    val row = org.json.JSONObject()
                     row.put("region", "EV"); row.put("region_name", "Events")
                     row.put("id", "blg_" + start + "_" + name.hashCode())
                     row.put("name", name); row.put("tagline", "$league | $name")
@@ -273,24 +284,27 @@ object FeedRepository {
             }
         } catch (e: Exception) { /* gagal parse -> fallback PPW/EsportEx */ }
 
-        // Jadwal PALING SEGAR langsung dari JSON endpoint Blogger (no captcha),
-        // stream-nya dicocokkan ke feed GitHub di atas. Kalau dapat event baru, pakai ini.
-        val blogger = fetchBloggerLive(org.json.JSONArray(samuraiRaw.ifBlank { "[]" }))
-        if (blogger.length() > samuraiCount) {
-            // rebuild out dari Blogger (hapus baris Samurai lama, PPW belum masuk)
-            val rebuilt = org.json.JSONArray()
-            for (i in 0 until blogger.length()) rebuilt.put(blogger.getJSONObject(i))
-            // replace isi out dengan rebuilt (add() akan dedup lagi kalau dipanggil)
+        // Jadwal PALING SEGAR langsung dari JSON endpoint Blogger (no captcha).
+        // Stream dicocokkan ke feed GitHub di atas. Blogger adalah sumber jadwal terbaru,
+        // jadi kalau ia menghasilkan event, PAKAI itu — jangan dibandingkan jumlahnya
+        // dengan feed lama (feed lama bisa lebih banyak tapi sudah basi).
+        val blogger = try {
+            if (samuraiRaw.isBlank()) org.json.JSONArray() else {
+                try { org.json.JSONArray(samuraiRaw) } catch (_: Exception) { org.json.JSONArray() }
+            }.let { fetchBloggerLive(it) }
+        } catch (_: Exception) { org.json.JSONArray() }
+        if (blogger.length() > 0) {
+            // Buang baris Samurai lama, ganti dengan jadwal Blogger yang lebih segar.
             var i = out.length() - 1
             while (i >= 0) {
-                val r = out.getJSONObject(i)
-                if (r.optString("id", "").startsWith("smr_")) out.remove(i)
+                if (out.getJSONObject(i).optString("id", "").startsWith("smr_")) out.remove(i)
                 i--
             }
-            for (i2 in 0 until rebuilt.length()) {
-                val r = rebuilt.getJSONObject(i2)
+            for (i2 in 0 until blogger.length()) {
+                val r = blogger.getJSONObject(i2)
                 if (r.optString("hls", "").isNotBlank()) out.put(r)
             }
+            samuraiCount = out.length()
         }
 
         // Kalau Samurai kosong, PAKAI PPW + EsportEx sbg cadangan (jangan biarkan tab EV kosong).

@@ -167,7 +167,7 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
     var query by remember { mutableStateOf("") }
     // Channel yang gagal/timeout → dilewati auto-fallback (dinamis).
     val failed = remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var heroErrorCount by remember { mutableIntStateOf(0) }
+    val heroErrorCount = remember { mutableIntStateOf(0) }
     var quality by remember { mutableIntStateOf(playerVm.quality) }
     var qualityOpen by remember { mutableStateOf(false) }
     val qualityLabels = listOf("AUTO", "1080p", "720p", "480p")
@@ -236,11 +236,11 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
             if (!recovered) {
                 // Batas loncat-channel: kalau semua gagal (mis. semua 403 dari IP device),
                 // jangan loop tanpa henti — berhenti dan biarkan UI tampil normal.
-                if (heroErrorCount >= cards.size.coerceAtLeast(1) + 2) {
+                if (heroErrorCount.intValue >= cards.size.coerceAtLeast(1) + 2) {
                     failed.value = emptySet()
-                    heroErrorCount = 0
+                    heroErrorCount.intValue = 0
                 } else {
-                    heroErrorCount++
+                    heroErrorCount.intValue++
                     val idx = cards.indexOfFirst { it.channel.hls == playerVm.playingUrl }
                         .let { if (it >= 0) it else playerVm.index }
                     failed.value = failed.value + idx
@@ -262,9 +262,13 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
     // ExoPlayer, URL HTML-nya error → onError → advanceFrom → loncat channel sendiri.
     val heroIsEmbed = remember(current.channel.hls) {
         val u = current.channel.hls
-        !u.contains(".m3u8", true) && !u.contains(".mp4", true) &&
-            u.startsWith("http") && (u.contains("embed") || u.contains("player") ||
-            u.contains("/#") || u.contains("iframe"))
+        // Stream langsung = HLS/DASH/progressive. Yang dianggap embed HANYA halaman HTML
+        // (bukan .m3u8/.mpd/.mp4) — sebelumnya .mpd tidak dicek sehingga DASH Samurai
+        // salah dianggap embed dan dimuat ke WebView (layar kosong).
+        val isDirect = u.contains(".m3u8", true) || u.contains(".mp4", true) ||
+            u.contains(".mpd", true) || u.contains("/cenc", true) || u.contains("/manifest", true)
+        !isDirect && u.startsWith("http") &&
+            (u.contains("embed") || u.contains("player") || u.contains("/#") || u.contains("iframe"))
     }
     LaunchedEffect(current.channel.hls, heroIsEmbed) {
         playerVm.tab = tab
