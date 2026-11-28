@@ -277,7 +277,64 @@ class PlayerVm : ViewModel() {
         if (choice == 0) builder.clearVideoSizeConstraints()
         else builder.setMaxVideoSize(Int.MAX_VALUE, qualityHeights[choice])
         instance.trackSelectionParameters = builder.build()
+        logTrackState(instance, "applyQuality q=$choice")
     }
+
+    /**
+     * Diagnostik: laporkan track yang benar-benar dipilih player.
+     * Dipakai untuk membuktikan (a) subtitle mati, (b) resolusi yang aktif.
+     * Ditulis ke file di external files dir KARENA logcat Redroid tidak bisa
+     * diandalkan (buffer 256 KiB penuh oleh spam lowmemorykiller → log hilang).
+     */
+    fun logTrackState(instance: ExoPlayer, where: String) {
+        try {
+            val groups = instance.currentTracks.groups
+            val video = StringBuilder()
+            val text = StringBuilder()
+            for (g in groups) {
+                for (i in 0 until g.length) {
+                    if (!g.isTrackSupported(i)) continue
+                    val f = g.getTrackFormat(i)
+                    val sel = if (g.isTrackSelected(i)) "*" else ""
+                    when (g.type) {
+                        C.TRACK_TYPE_VIDEO -> video.append("${f.width}x${f.height}$sel ")
+                        C.TRACK_TYPE_TEXT -> text.append("${f.language ?: "?"}$sel ")
+                    }
+                }
+            }
+            val anyTextSelected = groups.any { g ->
+                g.type == C.TRACK_TYPE_TEXT && (0 until g.length).any { g.isTrackSelected(it) }
+            }
+            val line = "$where | video=[$video] text=[$text] textSelected=$anyTextSelected " +
+                "vol=${instance.volume} muted=${instance.volume == 0f} " +
+                "state=${instance.playbackState} playing=${instance.isPlaying}"
+            android.util.Log.d("KaTvTracks", line)
+            diag("TRACKS $line")
+        } catch (e: Exception) {
+            android.util.Log.d("KaTvTracks", "$where | log failed: ${e.message}")
+        }
+    }
+
+    /** Tulis baris diagnostik ke file yang bisa dibaca dari host/adb. */
+    fun diag(line: String) {
+        try {
+            val dir = diagDir ?: return
+            val f = java.io.File(dir, "diag.log")
+            if (f.exists() && f.length() > 400_000) f.delete()
+            val ts = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
+                .format(java.util.Date())
+            f.appendText("$ts $line\n")
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Dipanggil Activity/Composable sekali untuk menunjuk folder diagnostik. */
+    fun bindDiagDir(context: Context) {
+        diagDir = context.getExternalFilesDir(null)?.absolutePath
+        diag("=== diag start dir=$diagDir ===")
+    }
+
+    private var diagDir: String? = null
 
     /** MediaItem dengan MIME hint + DRM bila perlu; subtitle TIDAK didaftarkan. */
     private fun mediaItem(card: ChannelCard): MediaItem {

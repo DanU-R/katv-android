@@ -95,6 +95,10 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // List channel HARUS dari tab yang sedang diputar, bukan default 'EV'.
     // Kalau salah tab, currentIdx akan mengarah ke channel yang salah dan saat balik
     // home tampil channel 01.
+    // Diagnostik harus siap sebelum player jalan: logcat Redroid tidak bisa dipakai
+    // (buffer penuh spam lowmemorykiller), jadi bukti ditulis ke file.
+    androidx.compose.runtime.LaunchedEffect(Unit) { playerVm.bindDiagDir(context) }
+
     val cards = remember(playerVm.tabCode) {
         val ev = ChannelRepository.loadGrid(context, playerVm.tabCode)
         // JANGAN biarkan tab EV kosong (mis. semua event sudah lewat / feed lagi sync):
@@ -274,6 +278,9 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
             val p = playerVm.player ?: continue
             val nowMedia = try { p.currentMediaItem?.mediaId ?: "" } catch (_: Exception) { "" }
             val playing = p.isPlaying
+            // Diagnostik berkala: buktikan subtitle mati & resolusi yang dipilih.
+            // Hanya saat playing supaya tidak spam ketika idle/buffering.
+            if (playing) playerVm.logTrackState(p, "periodic")
             // Bersihkan error HANYA kalau media berganti dan sudah jalan.
             val em = errorMediaId.value
             if (em != null && nowMedia.isNotEmpty() && nowMedia != em && playing) {
@@ -592,6 +599,7 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                     muted = !muted
                     playerVm.muted = muted
                     playerVm.player?.volume = if (muted) 0f else 1f
+                    playerVm.diag("MUTE muted=$muted vol=${playerVm.player?.volume}")
                 }) {
                     Icon(
                         if (muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
@@ -642,6 +650,7 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                                     playerVm.quality = i
                                     qualityExpanded = false
                                     playerVm.applyQuality()
+                                    playerVm.diag("QUALITY picked=$i ${playerVm.qualityLabels[i]}")
                                 }
                             )
                         }

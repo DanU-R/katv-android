@@ -83,6 +83,8 @@ private val qualityHeights = listOf(Int.MAX_VALUE, 1080, 720, 480)
 @Composable
 fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
     val context = LocalContext.current
+    // Diagnostik ke file: logcat Redroid tidak bisa diandalkan untuk verifikasi.
+    LaunchedEffect(Unit) { playerVm.bindDiagDir(context) }
     var feedVersion by remember { mutableIntStateOf(0) }
     // JANGAN blok UI dengan spinner saat startup. Cache/asset channels.json langsung
     // dipakai (loadGrid cache-first), jadi Home muncul INSTAN tanpa blank hitam.
@@ -187,10 +189,18 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
 
     val shown = remember(cards, query) {
         if (query.isBlank()) cards
-        else cards.filter { it.channelName.contains(query, true) || it.channel.countryName.contains(query, true) }
-            .ifEmpty { cards }
+        // JANGAN fallback ke `cards` saat filter kosong: menampilkan SEMUA channel
+        // membuat user mengira pencarian tidak bekerja (query sudah diketik, grid
+        // tetap penuh). Lebih baik grid kosong + pesan "tidak ditemukan".
+        else cards.filter {
+            it.channelName.contains(query, true) ||
+                it.channel.countryName.contains(query, true) ||
+                it.channel.tagline.contains(query, true)
+        }
     }
-    val safeIdx = selected.coerceIn(shown.indices)
+    // shown bisa KOSONG kalau query tidak cocok dengan channel mana pun.
+    // Jangan panggil coerceIn pada range kosong (crash); pakai 0 sebagai indeks aman.
+    val safeIdx = if (shown.isEmpty()) 0 else selected.coerceIn(shown.indices)
     val current = shown.getOrNull(safeIdx) ?: cards.first()
     // Index di grid penuh (tanpa filter search) — inilah yang dipakai fullscreen.
     val vmIndex = cards.indexOf(current).let { if (it >= 0) it else 0 }
@@ -587,6 +597,9 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
 
             // Search bar (toggle dari ikon search di hero)
             if (searchOpen) {
+                androidx.compose.runtime.LaunchedEffect(query) {
+                    playerVm.diag("SEARCH query='$query' matched=${shown.size}/${cards.size}")
+                }
                 TextField(
                     value = query,
                     onValueChange = { query = it; selected = 0 },
@@ -598,6 +611,16 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
 
             // ── 4. Vertical channel list ─────────────────────────────────────
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                if (shown.isEmpty() && query.isNotBlank()) {
+                    // Pesan eksplisit: tanpa ini grid kosong terlihat seperti kerusakan.
+                    Text(
+                        "Tidak ada channel untuk \"$query\"",
+                        color = Quiet,
+                        fontFamily = MonoFont,
+                        fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)
+                    )
+                }
                 shown.forEach { card ->
                     val idx = cards.indexOf(card)
                     ChannelRowView(
