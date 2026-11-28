@@ -126,6 +126,20 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     val loading = remember { mutableStateOf(false) }
     val card = if (playerVm.deeplinkMode) playerVm.deeplinkCard else cards.getOrNull(currentIdx)
 
+    // Channel embed (PPW/EsportEx/NFL) diputar oleh WebViewPlayer, BUKAN ExoPlayer.
+    // Untuk channel ini playerVm.player tetap kosong / tidak dipakai, jadi watchdog
+    // stall berbasis ExoPlayer akan memberi false positive "Stream tidak merespons"
+    // padahal WebView sedang main. Hitung di sini supaya watchdog bisa melewatinya.
+    val currentUrl = remember(card, currentIdx) { card?.channel?.hls.orEmpty() }
+    val isEmbedChannel = remember(currentUrl) {
+        val direct = currentUrl.contains(".m3u8", true) || currentUrl.contains(".mp4", true) ||
+            currentUrl.contains(".mpd", true) || currentUrl.contains("/cenc", true) ||
+            currentUrl.contains("/manifest", true)
+        !direct && currentUrl.startsWith("http") &&
+            (currentUrl.contains("embed") || currentUrl.contains("player") ||
+                currentUrl.contains("/#") || currentUrl.contains("iframe"))
+    }
+
     // Pasang listener ke VM SEBELUM pertama kali play (error saat prepare tertangkap).
     // currentIdx dibaca dari VM supaya callback selalu saw channel aktif.
     DisposableEffect(playerVm) {
@@ -214,6 +228,14 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
         if (target != null) {
             playerVm.index = currentIdx
             playerVm.selectedIndex = currentIdx
+            // Channel embed diputar WebViewPlayer. JANGAN serahkan URL embed ke
+            // ExoPlayer: dia akan gagal parse HTML → onPlayerError → handleError
+            // menaikkan retryCount sampai mentok, sehingga overlay "Semua channel
+            // gagal" menutupi WebView yang sebenarnya sedang main.
+            if (isEmbedChannel) {
+                loading.value = false
+                return@LaunchedEffect
+            }
             val already = playerVm.playingUrl == target.channel.hls
             val playing = playerVm.player?.isPlaying == true
             if (already && playing && retryKey.intValue == 0) {
@@ -275,13 +297,20 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // Watchdog stall independen: berjalan per MediaItem (retryKey/currentIdx), bukan
     // polling posisi. Kalau dalam 9 detik tidak pernah ada frame yang jalan, tampilkan
     // pesan + tombol RETRY/BACK supaya user tidak terjebak layar hitam.
-    LaunchedEffect(currentIdx, retryKey.intValue) {
+    // SKIP untuk channel embed: yang memutar adalah WebViewPlayer, bukan ExoPlayer,
+    // jadi player kosong di sini bukan bukti stream mati (false positive).
+    LaunchedEffect(currentIdx, retryKey.intValue, isEmbedChannel) {
+        android.util.Log.d("KaTvWatchdog", "start idx=$currentIdx embed=$isEmbedChannel url=${currentUrl.take(80)}")
         stalled.value = false
+        if (isEmbedChannel) { android.util.Log.d("KaTvWatchdog", "skip embed"); return@LaunchedEffect }
         kotlinx.coroutines.delay(9000)
-        val p = playerVm.player ?: return@LaunchedEffect
+        val p = playerVm.player
+        android.util.Log.d("KaTvWatchdog", "check player=$p isPlaying=${p?.isPlaying} pos=${p?.currentPosition}")
+        if (p == null) return@LaunchedEffect
         val playing = p.isPlaying
         val advanced = p.currentPosition > 800L
         if (!playing && !advanced) {
+            android.util.Log.d("KaTvWatchdog", "STALL fired")
             stalled.value = true
             if (error.value == null) {
                 errorMediaId.value = p.currentMediaItem?.mediaId
@@ -624,9 +653,11 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
         // Overlay error HANYA kalau memang ada error DAN player tidak sedang playing.
         // `stalled` ikut: stream yang "READY" tapi tidak pernah merender frame juga
         // harus menampilkan pesan, bukan layar hitam tanpa jalan keluar.
+        // Channel embed dilewati: ExoPlayer-nya memang tidak dipakai, jadi statusnya
+        // tidak mencerminkan apa pun tentang WebView.
         val liveNow = (playerVm.player?.isPlaying == true) ||
             (playerVm.player?.playbackState == androidx.media3.common.Player.STATE_READY && !stalled.value)
-        if (error.value != null && !liveNow) {
+        if (error.value != null && !liveNow && !isEmbedChannel) {
             Column(
                 Modifier.align(Alignment.Center).background(Color(0xEE000000)).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally

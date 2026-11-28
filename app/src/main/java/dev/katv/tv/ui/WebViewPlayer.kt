@@ -10,14 +10,26 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.webkit.WebViewCompat
+import android.webkit.WebResourceError
 import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -137,6 +149,11 @@ private val TRACKER_HOSTS = listOf(
 @Composable
 fun WebViewPlayer(url: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    // Sinyal kegagalan WebView: embed yang gagal total (DNS mati/403/halaman kosong)
+    // sebelumnya membuat layar hitam tanpa jalan keluar karena ExoPlayer tidak dipakai
+    // di jalur ini. Callback ini memberi PlayerScreen bukti untuk menampilkan overlay.
+    val failed = remember { mutableStateOf(false) }
+    val loaded = remember { mutableStateOf(false) }
     val uaDesktop = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     val web = remember {
@@ -262,6 +279,23 @@ fun WebViewPlayer(url: String, modifier: Modifier = Modifier) {
                 override fun onPageFinished(view: WebView?, u: String?) {
                     super.onPageFinished(view, u)
                     view?.evaluateJavascript(DEFUSER_JS, null)
+                    loaded.value = true
+                }
+
+                // Embed mati total: tampilkan overlay supaya user punya RETRY/KEMBALI.
+                override fun onReceivedError(
+                    view: WebView?, request: WebResourceRequest?, error: WebResourceError?
+                ) {
+                    super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame == true) failed.value = true
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?
+                ) {
+                    super.onReceivedHttpError(view, request, response)
+                    val code = response?.statusCode ?: 0
+                    if (request?.isForMainFrame == true && code >= 400) failed.value = true
                 }
             }
             loadUrl(url)
@@ -272,5 +306,28 @@ fun WebViewPlayer(url: String, modifier: Modifier = Modifier) {
     }
     Box(modifier.fillMaxSize()) {
         androidx.compose.ui.viewinterop.AndroidView({ web }, modifier = Modifier.fillMaxSize())
+        if (failed.value) {
+            Box(
+                Modifier.fillMaxSize().background(Color(0xEE000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "Embed tidak bisa dimuat", color = Color(0xFFE5442B),
+                        fontWeight = FontWeight.Bold, fontSize = 17.sp
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Halaman embed menolak / tidak tersedia.\nCoba channel lain.",
+                        color = Color(0xFFF2F2F0), fontSize = 12.sp
+                    )
+                }
+            }
+        }
+        if (!loaded.value && !failed.value) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Memuat embed…", color = Color(0xFFF2F2F0), fontSize = 12.sp)
+            }
+        }
     }
 }
