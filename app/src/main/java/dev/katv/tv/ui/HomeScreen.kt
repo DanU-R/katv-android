@@ -197,8 +197,19 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
 
     // Satu pintu masuk fullscreen: sinkronkan VM dulu supaya route index dan identitas
     // VM identik (juga saat tap "LIVE" pada row yang bukan channel hero aktif).
+    val heroViewRef = remember { mutableStateOf<PlayerView?>(null) }
+    // Guard anti-navigate-ganda. Hero punya Box clickable + tombol Fullscreen clickable
+    // yang NESTED; satu tap bisa memicu keduanya → dua kali navigate("player/N") →
+    // back stack korup → kembali ke splash (gejala "freeze"/layar hitam).
+    var navigating by remember { mutableStateOf(false) }
+    // Reset saat layar ini kembali aktif (balik dari player) — kalau tidak, semua tap
+    // berikutnya diblokir guard.
+    LaunchedEffect(Unit) { navigating = false }
     fun openPlayer(index: Int) {
+        if (navigating) return
+        navigating = true
         val safe = if (cards.isEmpty()) 0 else index.coerceIn(cards.indices)
+        heroViewRef.value?.player = null
         playerVm.tab = tab
         playerVm.tabCode = tabCode
         playerVm.index = safe
@@ -278,7 +289,6 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
         if (!heroIsEmbed) playerVm.play(context, current)
     }
 
-    val heroViewRef = remember { mutableStateOf<PlayerView?>(null) }
     // Jangan lepas player dari PlayerView saat navigasi ke fullscreen. Player dimiliki VM
     // dan TIDAK pernah di-release; melepasnya di sini bikin surface hero detach sebentar
     // sebelum PlayerView fullscreen attach → frame diam ("seolah pause") pada stream

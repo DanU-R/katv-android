@@ -238,36 +238,40 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // dari media yang error (artinya channel berganti & berhasil). Kalau media sama,
     // error tetap tampil walau posisi > 0 dari stream sebelumnya — sumber bug "hitam
     // tanpa pesan" adalah menghapus error berdasarkan posisi player yang masih nyangkut.
+    // Pantau status player. Loop ini SENGAJA lambat (1.5 s) dan hanya menulis state kalau
+    // NILAINYA BERUBAH. Loop cepat (500 ms) yang membaca currentPosition memicu
+    // recomposition seluruh layar → UI thread macet (jank 33%, p95 1.4 s = "freeze").
     LaunchedEffect(playerVm) {
         while (true) {
-            kotlinx.coroutines.delay(500)
-            val p = playerVm.player
-            val nowMedia = p?.currentMediaItem?.mediaId ?: ""
-            val pos = p?.currentPosition ?: 0L
-            val playing = p?.isPlaying == true
-            if (errorMediaId.value != null && nowMedia.isNotEmpty() && nowMedia != errorMediaId.value && (playing || pos > 0L)) {
-                // channel baru sudah jalan → bersihkan error lama
+            kotlinx.coroutines.delay(1500)
+            val p = playerVm.player ?: continue
+            val nowMedia = try { p.currentMediaItem?.mediaId ?: "" } catch (_: Exception) { "" }
+            val playing = p.isPlaying
+            // Bersihkan error HANYA kalau media berganti dan sudah jalan.
+            val em = errorMediaId.value
+            if (em != null && nowMedia.isNotEmpty() && nowMedia != em && playing) {
                 error.value = null
                 errorMediaId.value = null
-                loading.value = false
-                retryCount.intValue = 0
-            } else if (playing && error.value == null) {
-                if (loading.value) loading.value = false
                 if (retryCount.intValue != 0) retryCount.intValue = 0
             }
+            // Tulis state hanya kalau benar-benar berubah (hindari recomposition sia-sia).
+            if (playing && loading.value) loading.value = false
+            if (playing && error.value == null && retryCount.intValue != 0) retryCount.intValue = 0
         }
     }
 
-    LaunchedEffect(loading.value, retryKey.intValue) {
+    // Overlay "Memuat" hilang otomatis: kalau player sudah playing, atau setelah 2.5 s.
+    // Key cukup loading.value — jangan tambahkan retryKey (bikin effect restart & loop ganda).
+    LaunchedEffect(loading.value) {
+        if (!loading.value) return@LaunchedEffect
         var waited = 0L
-        while (loading.value) {
-            kotlinx.coroutines.delay(150)
-            waited += 150
+        while (loading.value && waited < 2500L) {
+            kotlinx.coroutines.delay(250)
+            waited += 250
             val p = playerVm.player
-            val live = p?.isPlaying == true ||
-                (p?.playWhenReady == true && p?.playbackState == Player.STATE_READY)
-            if (live || waited >= 2500L) { loading.value = false; break }
+            if (p?.isPlaying == true) { loading.value = false; break }
         }
+        if (loading.value) loading.value = false
     }
 
     var controlsVisible by remember { mutableStateOf(true) }

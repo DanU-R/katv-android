@@ -154,8 +154,10 @@ class PlayerVm : ViewModel() {
     /** Coba server berikutnya untuk channel yang sama. @return true kalau ada server baru diputar. */
     fun advanceServer(context: Context): Boolean {
         if (serverList.size < 2) return false
+        // Kalau serverIdx=-1 (belum pernah main), mulai dari 0 — bukan 1.
+        val startFrom = if (serverIdx < 0) 0 else serverIdx
         for (step in 1..serverList.size) {
-            val idx = (serverIdx + step) % serverList.size
+            val idx = (startFrom + step) % serverList.size
             val url = serverList[idx]
             if (url.isBlank() || url in triedServers) continue
             serverIdx = idx
