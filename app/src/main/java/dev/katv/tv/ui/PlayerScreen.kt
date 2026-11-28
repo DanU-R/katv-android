@@ -96,7 +96,13 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // Kalau salah tab, currentIdx akan mengarah ke channel yang salah dan saat balik
     // home tampil channel 01.
     val cards = remember(playerVm.tabCode) {
-        ChannelRepository.loadGrid(context, playerVm.tabCode)
+        val ev = ChannelRepository.loadGrid(context, playerVm.tabCode)
+        // JANGAN biarkan tab EV kosong (mis. semua event sudah lewat / feed lagi sync):
+        // fallback ke channel 24/7 supaya user tetap dapat sesuatu yang bisa diputar,
+        // bukan layar "No channel selected".
+        if (ev.isEmpty() && playerVm.tabCode.equals("EV", true)) {
+            ChannelRepository.loadGrid(context, "C0")
+        } else ev
     }
     var currentIdx by remember {
         mutableIntStateOf(
@@ -265,8 +271,20 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     var brightnessGesture = remember { mutableStateOf(false) }
 
     if (card == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No channel selected", color = Paper, fontFamily = SansFont, fontSize = 16.sp)
+        Box(Modifier.fillMaxSize().background(Obsidian), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Channel belum siap", color = Paper, fontFamily = SansFont, fontSize = 16.sp)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "TAK MUAT ULANG",
+                    color = Vermilion, fontFamily = MonoFont, fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable {
+                        ChannelRepository.clearCache()
+                        retryKey++
+                    }
+                )
+            }
         }
         return
     }

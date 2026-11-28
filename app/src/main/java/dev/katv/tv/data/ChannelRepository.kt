@@ -189,6 +189,11 @@ object ChannelRepository {
         }
 
         var pool = all.filter { it.region.equals(tabCode, true) }
+        // Fallback: tab EV bisa kosong kalau semua event sudah lewat / feed belum sync.
+        // Jangan biarkan user dapat layar kosong — ambil channel playable dari region lain.
+        if (pool.isEmpty() && tabCode.equals("EV", true)) {
+            pool = all.filter { !it.fakeEvent.equals("t", true) && playable(it) }
+        }
         // Ranking: channel yang BISA diputar & asli (fake_event=f) di depan.
         // Buang DRM (dash-clearkey/widevine/drm_rcti_plus) — player gak support & bikin hitam.
         val asli = pool.filter { !it.fakeEvent.equals("t", true) && playable(it) }
