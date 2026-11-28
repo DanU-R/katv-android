@@ -111,10 +111,12 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 .coerceIn(cards.indices)
         )
     }
-    var error by remember { mutableStateOf<String?>(null) }
+    val error = remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
+    val retryCount = remember { mutableIntStateOf(0) }
+    val maxRetries = 3
     val failed = remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var loading by remember { mutableStateOf(false) }
+    val loading = remember { mutableStateOf(false) }
     val card = if (playerVm.deeplinkMode) playerVm.deeplinkCard else cards.getOrNull(currentIdx)
 
     // Pasang listener ke VM SEBELUM pertama kali play (error saat prepare tertangkap).
@@ -124,23 +126,41 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
             // Coba server alternatif dulu sebelum pindah channel.
             val recovered = playerVm.advanceServer(context)
             if (!recovered) {
-                error = null
-                val from = currentIdx
-                failed.value = failed.value + from
-                val dead = failed.value
-                val next = (1..cards.size).map { (from + it) % cards.size }.firstOrNull { it !in dead }
-                if (next != null) {
-                    currentIdx = next
-                    error = null
-                    retryKey++
-                } else {
+                // BATAS RETRY: tanpa ini, kalau SEMUA channel gagal (mis. semua kena 403
+                // dari IP device), error → pindah → retry → error ... jadi loop tanpa henti
+                // yang membuat UI terlihat freeze dan hammer player terus-menerus.
+                if (retryCount.intValue >= maxRetries) {
                     failed.value = emptySet()
-                    currentIdx = if (cards.isEmpty()) 0 else (from + 1) % cards.size
-                    error = null
+                    error.value = "Semua channel gagal dimuat.\nCek koneksi / coba lagi."
+                    loading.value = false
+                    // JANGAN reset retryCount di sini — kalau direset, handler berikutnya
+                    // menganggap ini percobaan baru dan loop kembali tanpa pernah menampilkan
+                    // pesan. Biarkan mentok supaya user lihat error + tombol RETRY.
+                } else if (playerVm.deeplinkMode) {
+                    // Deep-link: TIDAK ada channel lain untuk dicoba. Tampilkan error
+                    // (sebelumnya layar cuma hitam tanpa info apa pun).
+                    error.value = "Stream tidak bisa dimuat.\nURL mungkin sudah mati / diblok."
+                    loading.value = false
+                } else if (cards.isEmpty()) {
+                    // Tidak ada card sama sekali: jangan loop, tampilkan pesan.
+                    error.value = "Tidak ada channel tersedia."
+                    loading.value = false
+                } else {
+                    retryCount.intValue++
+                    val from = currentIdx
+                    failed.value = failed.value + from
+                    val dead = failed.value
+                    val next = (1..cards.size).map { (from + it) % cards.size }
+                        .firstOrNull { it !in dead }
+                    currentIdx = next ?: run {
+                        failed.value = emptySet()
+                        (from + 1) % cards.size
+                    }
+                    error.value = null
                     retryKey++
                 }
             } else {
-                error = null
+                error.value = null
                 retryKey++
             }
         }
@@ -181,11 +201,11 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 // PlayerView baru attach, surface swap bisa bikin stream rapuh diam sesaat.
                 playerVm.player?.playWhenReady = true
                 if (playerVm.player?.isPlaying == false) playerVm.player?.play()
-                loading = false
+                loading.value = false
             } else {
                 playerVm.play(context, target, force = retryKey > 0)
                 // Genuine switch / retry yang menampilkan overlay.
-                loading = retryKey > 0 || !already
+                loading.value = retryKey > 0 || !already
             }
         }
     }
@@ -193,15 +213,30 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     // Hapus overlay "Memuat" begitu frame pertama mulai diputar — ATAU setelah timeout.
     // Dua jalan keluar ini mencegah teks "Memuat channel…" nempel selamanya saat
     // isPlaying sempat fluktuasi (surface swap / HLS rebuffer) padahal video sudah tampil.
-    LaunchedEffect(loading, retryKey) {
+    // Pantau status player: bersihkan overlay error begitu video BENAR-BENAR playing.
+    // Tanpa ini, overlay "Playback error" dari percobaan server sebelumnya tetap nempel
+    // di atas video yang sudah sukses (kelihatan seperti gagal padahal jalan).
+    LaunchedEffect(playerVm) {
+        while (true) {
+            kotlinx.coroutines.delay(400)
+            val p = playerVm.player
+            val nowPlaying = p?.isPlaying == true || p?.playbackState == Player.STATE_READY
+            if (nowPlaying) {
+                if (error.value != null) error.value = null
+                if (loading.value) loading.value = false
+            }
+        }
+    }
+
+    LaunchedEffect(loading.value, retryKey) {
         var waited = 0L
-        while (loading) {
+        while (loading.value) {
             kotlinx.coroutines.delay(150)
             waited += 150
             val p = playerVm.player
             val live = p?.isPlaying == true ||
                 (p?.playWhenReady == true && p?.playbackState == Player.STATE_READY)
-            if (live || waited >= 2500L) { loading = false; break }
+            if (live || waited >= 2500L) { loading.value = false; break }
         }
     }
 
@@ -400,7 +435,7 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
             }
         }
 
-        if (loading && error == null) {
+        if (loading.value && error.value == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Memuat channel…", color = Paper, fontFamily = MonoFont, fontSize = 13.sp)
             }
@@ -518,7 +553,10 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
             }
         }
 
-        if (error != null) {
+        // Overlay error HANYA kalau memang ada error DAN player tidak sedang playing.
+        val liveNow = playerVm.player?.isPlaying == true ||
+            playerVm.player?.playbackState == Player.STATE_READY
+        if (error.value != null && !liveNow) {
             Column(
                 Modifier.align(Alignment.Center).background(Color(0xEE000000)).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -526,15 +564,15 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 Text("Playback error", color = Vermilion, fontFamily = SansFont,
                     fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(Modifier.height(8.dp))
-                Text(error ?: "", color = Paper, fontFamily = MonoFont, fontSize = 12.sp,
+                Text(error.value ?: "", color = Paper, fontFamily = MonoFont, fontSize = 12.sp,
                     textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
                 Text("RETRY", color = Vermilion, fontFamily = MonoFont, fontWeight = FontWeight.Bold,
                     fontSize = 14.sp, modifier = Modifier.clickable {
                         failed.value = failed.value + currentIdx
                         retryKey++
-                        loading = true
-                        error = null
+                        loading.value = true
+                        error.value = null
                     })
             }
         }

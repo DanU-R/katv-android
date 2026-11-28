@@ -167,6 +167,7 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
     var query by remember { mutableStateOf("") }
     // Channel yang gagal/timeout → dilewati auto-fallback (dinamis).
     val failed = remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var heroErrorCount by remember { mutableIntStateOf(0) }
     var quality by remember { mutableIntStateOf(playerVm.quality) }
     var qualityOpen by remember { mutableStateOf(false) }
     val qualityLabels = listOf("AUTO", "1080p", "720p", "480p")
@@ -233,11 +234,18 @@ fun HomeScreen(playerVm: PlayerVm, onOpenPlayer: (Int) -> Unit) {
             // Server alternatif dulu sebelum loncat channel.
             val recovered = playerVm.advanceServer(context)
             if (!recovered) {
-                // Pakai URL yang benar-benar gagal, bukan index VM (boleh berubah saat fullscreen).
-                val idx = cards.indexOfFirst { it.channel.hls == playerVm.playingUrl }
-                    .let { if (it >= 0) it else playerVm.index }
-                failed.value = failed.value + idx
-                advanceFrom(idx)
+                // Batas loncat-channel: kalau semua gagal (mis. semua 403 dari IP device),
+                // jangan loop tanpa henti — berhenti dan biarkan UI tampil normal.
+                if (heroErrorCount >= cards.size.coerceAtLeast(1) + 2) {
+                    failed.value = emptySet()
+                    heroErrorCount = 0
+                } else {
+                    heroErrorCount++
+                    val idx = cards.indexOfFirst { it.channel.hls == playerVm.playingUrl }
+                        .let { if (it >= 0) it else playerVm.index }
+                    failed.value = failed.value + idx
+                    advanceFrom(idx)
+                }
             }
         }
         onDispose {

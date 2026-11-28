@@ -142,23 +142,29 @@ class PlayerVm : ViewModel() {
     private var currentCard: ChannelCard? = null
 
     /** Coba server berikutnya untuk channel yang sama. @return true kalau ada server baru diputar. */
+    /** Server yang sudah dicoba & gagal — cegah mencoba server yang sama berulang. */
+    private val triedServers = mutableSetOf<String>()
+
+    /** Coba server berikutnya untuk channel yang sama. @return true kalau ada server baru diputar. */
     fun advanceServer(context: Context): Boolean {
         if (serverList.size < 2) return false
         for (step in 1..serverList.size) {
             val idx = (serverIdx + step) % serverList.size
             val url = serverList[idx]
-            if (url == playingUrl && !url.isBlank()) continue
+            if (url.isBlank() || url in triedServers) continue
             serverIdx = idx
-            currentCard?.let { card ->
-                val next = card.copy(channel = card.channel.copy(
-                    hls = url,
-                    jenis = if (url.contains(".m3u8", true)) "hls" else "dash-widevine"
-                ))
-                android.util.Log.d("KaTvFailover", "try server $idx/${serverList.size}: ${url.take(90)}")
-                playResolved(context, next, streamHeaders(next.channel), force = true)
-                return true
-            }
+            val card = currentCard ?: return false
+            triedServers.add(url)
+            val next = card.copy(channel = card.channel.copy(
+                hls = url,
+                jenis = if (url.contains(".m3u8", true)) "hls" else "dash-widevine"
+            ))
+            android.util.Log.d("KaTvFailover", "try server $idx/${serverList.size}: ${url.take(90)}")
+            playResolved(context, next, streamHeaders(next.channel), force = true)
+            return true
         }
+        // Semua server sudah dicoba → reset supaya RETRY manual bisa mengulang.
+        triedServers.clear()
         return false
     }
 
@@ -177,6 +183,7 @@ class PlayerVm : ViewModel() {
         if (card.channel.hls.isNotBlank() && card.channel.hls !in urls) urls.add(0, card.channel.hls)
         serverList = urls
         serverIdx = urls.indexOf(card.channel.hls).let { if (it >= 0) it else -1 }
+        triedServers.clear()
         // RCTI+ URL-nya bukan media — resolve dulu ke .m3u8/.mpd asli via visitorsToken.
         if (RctiResolver.isRctiPlayer(card.channel.hls)) {
             android.util.Log.d("KaTvDeep", "rcti branch entered: ${card.channel.hls.take(80)}")
