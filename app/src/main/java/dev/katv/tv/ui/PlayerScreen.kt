@@ -114,6 +114,11 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
     val error = remember { mutableStateOf<String?>(null) }
     // MediaId yang menyebabkan error — dipakai untuk tahu kapan error sudah basi.
     val errorMediaId = remember { mutableStateOf<String?>(null) }
+    // Stall detection: player bisa STATE_READY / onError tidak pernah datang, tapi
+    // TIDAK ADA frame yang dirender (mis. playlist 403 berisi HTML yang tetap di-parse).
+    // Tanpa deteksi ini UI jadi layar hitam total tanpa pesan & tanpa tombol keluar.
+    val stalled = remember { mutableStateOf(false) }
+    val lastPos = remember { mutableStateOf(-1L) }
     val retryKey = remember { mutableIntStateOf(0) }
     val retryCount = remember { mutableIntStateOf(0) }
     val maxRetries = 3
@@ -254,9 +259,35 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 errorMediaId.value = null
                 if (retryCount.intValue != 0) retryCount.intValue = 0
             }
+            // ── STALL STATE RESET ────────────────────────────────────────────
+            // Begitu benar-benar playing, hapus status stall supaya watchdog berikut
+            // (channel lain) mulai dari nol.
+            if (playing) {
+                stalled.value = false
+                lastPos.value = p.currentPosition
+            }
             // Tulis state hanya kalau benar-benar berubah (hindari recomposition sia-sia).
             if (playing && loading.value) loading.value = false
             if (playing && error.value == null && retryCount.intValue != 0) retryCount.intValue = 0
+        }
+    }
+
+    // Watchdog stall independen: berjalan per MediaItem (retryKey/currentIdx), bukan
+    // polling posisi. Kalau dalam 9 detik tidak pernah ada frame yang jalan, tampilkan
+    // pesan + tombol RETRY/BACK supaya user tidak terjebak layar hitam.
+    LaunchedEffect(currentIdx, retryKey.intValue) {
+        stalled.value = false
+        kotlinx.coroutines.delay(9000)
+        val p = playerVm.player ?: return@LaunchedEffect
+        val playing = p.isPlaying
+        val advanced = p.currentPosition > 800L
+        if (!playing && !advanced) {
+            stalled.value = true
+            if (error.value == null) {
+                errorMediaId.value = p.currentMediaItem?.mediaId
+                error.value = "Stream tidak merespons.\nChannel mungkin sudah selesai / URL mati."
+                loading.value = false
+            }
         }
     }
 
@@ -591,8 +622,10 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
         }
 
         // Overlay error HANYA kalau memang ada error DAN player tidak sedang playing.
-        val liveNow = playerVm.player?.isPlaying == true ||
-            playerVm.player?.playbackState == Player.STATE_READY
+        // `stalled` ikut: stream yang "READY" tapi tidak pernah merender frame juga
+        // harus menampilkan pesan, bukan layar hitam tanpa jalan keluar.
+        val liveNow = (playerVm.player?.isPlaying == true) ||
+            (playerVm.player?.playbackState == androidx.media3.common.Player.STATE_READY && !stalled.value)
         if (error.value != null && !liveNow) {
             Column(
                 Modifier.align(Alignment.Center).background(Color(0xEE000000)).padding(24.dp),
@@ -604,17 +637,25 @@ fun PlayerScreen(playerVm: PlayerVm, channelIndex: Int, onBack: () -> Unit) {
                 Text(error.value ?: "", color = Paper, fontFamily = MonoFont, fontSize = 12.sp,
                     textAlign = TextAlign.Center)
                 Spacer(Modifier.height(16.dp))
-                Text("RETRY", color = Vermilion, fontFamily = MonoFont, fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp, modifier = Modifier.clickable {
-                        // Retry manual harus mengulang dari nol: reset counter & daftar gagal,
-                        // kalau tidak, retryCount sudah mentok → langsung error lagi.
-                        retryCount.intValue = 0
-                        failed.value = emptySet()
-                        playerVm.resetServersForRetry()
-                        retryKey.intValue++
-                        loading.value = true
-                        error.value = null
-                    })
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("RETRY", color = Vermilion, fontFamily = MonoFont, fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp, modifier = Modifier.clickable {
+                            // Retry manual harus mengulang dari nol: reset counter & daftar gagal,
+                            // kalau tidak, retryCount sudah mentok → langsung error lagi.
+                            retryCount.intValue = 0
+                            failed.value = emptySet()
+                            stalled.value = false
+                            playerVm.resetServersForRetry()
+                            retryKey.intValue++
+                            loading.value = true
+                            error.value = null
+                        })
+                    Spacer(Modifier.width(28.dp))
+                    // Jalan keluar wajib ada: tanpa ini user terjebak layar hitam
+                    // karena controls auto-hide setelah 8 detik.
+                    Text("KEMBALI", color = Quiet, fontFamily = MonoFont, fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp, modifier = Modifier.clickable { onBack() })
+                }
             }
         }
     }
